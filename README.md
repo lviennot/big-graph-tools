@@ -64,14 +64,6 @@ and
 
 
 
-## TODO
-
-- classical linked list in edge vector, or even binary search tree, or a mix
-- advantage : index of edges are fixed
-- concl: sort should send a new graph (delete the old one if you wish)
-- take few bits to mark nodes (explicitly added are marked) or edges
-
-
 ## License
 
 GNU LGPL.
