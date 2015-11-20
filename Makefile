@@ -6,11 +6,12 @@ PACKAGES:=-package ocamlgraph
 APIDOC:=IntDigraph Vector Traversal Skeleton
 SRCS:=$(wildcard src/*.ml) $(wildcard src/*.mli)
 
-all: binaries
-
 
 binaries: tags
 	 ocamlbuild $(LIBS) $(PACKAGES) $(patsubst %,%.native,$(TARGETS))
+
+all: binaries api.doc
+
 
 tags:
 	echo "true:      inline(0)\ntrue:       debug\n<src>:      include" > _tags

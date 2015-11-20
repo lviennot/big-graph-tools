@@ -28,9 +28,10 @@ Compute a skeleton graph:
 ./skeleton.native -verbose 1.2 4 12 graph_edges.csv > skeleton.csv
 ```
 
-This reads the edges of a graph from file `graph_edges.csv` and 
-writes in file `skeleton.csv` the edges of a skeleton of the graph.
-See [`examples/g_n2984_m19024.pdf`](tree/master/examples/) for an example.
+This reads the edges of a graph from file `graph_edges.csv` and writes in file
+`skeleton.csv` the edges of a skeleton of the graph.  See
+[`examples/g_n2984_m19024.pdf`](https://who.rocq.inria.fr/Laurent.Viennot/dev/big-graph-tools/examples/g_n2984_m19024.pdf)
+for an example.
 
 Color the edges of the graph :
 ```

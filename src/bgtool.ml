@@ -2,5 +2,9 @@
 
 (** Big graph manipulation tool. *)
 
+let main () =
+  ()
 
-let () = Debug.run ~verbose:true main
+let () =
+  Debug.run ~verbose:(TrivialArg.boolOption "-verbose") main
+
