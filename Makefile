@@ -1,4 +1,4 @@
-TARGETS:=skeleton
+TARGETS:=skeleton bgtool
 MODS:=traverse.ml
 LIBS:=-lib unix -lib bigarray 
 # -lib graphics -cflags -I,+lablgtk
@@ -33,11 +33,16 @@ mods.top: $(patsubst %,_src/%,$(MODS))
 ocaml:
 	utop || rlwrap ocaml || ocaml 
 
-doc: 
-	rm -f api.odocl
+
+
+.PHONY: doc
+
+api.doc: 
+	rm -f $@ api.odocl
 	for m in $(APIDOC) ; do echo $$m >> api.odocl ; done
 	ocamlbuild -docflags -charset,UTF-8,-keep-code,-colorize-code,-html,-short-functors $(LIBS) $(PACKAGES) api.docdir/index.html
 	rm -f api.odocl
+	mv api.docdir $@
 
 
 clean:
@@ -45,4 +50,6 @@ clean:
 	ocamlbuild -clean
 	rm -fr _build _tags api.odocl mods.top mods.mltop
 
+
+-include viz.make manage.make
 

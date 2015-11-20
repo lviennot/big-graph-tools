@@ -358,24 +358,26 @@ let main () =
 
     | "gdf" ->
       (* Just color original graph : *)
-      prt "nodedef>name VARCHAR,label VARCHAR\n" ;
+      let green = "'200,20,20'" and red = "'20,200,20'" and dark = "'30,30,30'"
+      and blue = "'20,20,200'" and light = "'100,100,100'" in
+      prt "nodedef>name VARCHAR,label VARCHAR,color VARCHAR,index VARCHAR\n" ;
       G.iter_vertex (fun u -> 
-        let label = 
-          if u = root then "root"
-          else if G.mem_vertex skel u then "skel"
-          else "."
+        let label,color =
+          if u = root then "root", blue
+          else if G.mem_vertex skel u then "skel", green
+          else "_", dark
         in
-        prt "%d,%s\n" (vtx u) label ;
+        prt "%d,%s,%s,%d\n" (vtx u) label color u ;
       ) g ;
       prt "edgedef>node1 VARCHAR,node2 VARCHAR,label VARCHAR,\
                    color VARCHAR,weight DOUBLE\n" ;
       G.iter_edges (fun u v -> 
         let label, color, weight =
           if G.mem_edge skel_inter u v || G.mem_edge skel_inter v u
-          then "inter_branch", "'200,20,20'", 1. 
+          then "inter_branch", green, 1. 
           else if G.mem_edge skel u v || G.mem_edge skel v u
-          then "tree", "'20,200,20'", 1.
-          else "", "'120,120,120'", 0.1
+          then "tree", red, 1.
+          else "", light, 0.2
         in
         prt "%d,%d,%s,%s,%.1f\n" (vtx u) (vtx v) label color weight ;
       ) g ;
@@ -387,4 +389,5 @@ let main () =
     (G.n_mem skel) (G.m skel) ;
   () 
 
-let () = Debug.run ~verbose:true main
+let () =
+  Debug.run ~verbose:(TrivialArg.boolOption "-verbose") main

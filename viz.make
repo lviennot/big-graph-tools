@@ -25,3 +25,11 @@ help:
 %.force:
 	rm -f $*
 	$(THISMAKE) $*
+
+
+.PHONY: examples
+
+examples:
+	$(THISMAKE) examples/g_n2984_m19024.pdf
+	$(THISMAKE) examples/g_n2984_m19024_skel.pdf
+
