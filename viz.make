@@ -1,5 +1,5 @@
 SKELETON:=./skeleton.native 1.2 4 12
-THISMAKE:=make -f viz.make
+VIZMAKE:=make -f viz.make
 
 help:
 	@echo "Visualize some graphs."
@@ -20,16 +20,16 @@ help:
 	neato -o $@ -Tpdf $<
 
 %.svg: %.dot
-	neato -o $@ -Nlabel= -Tsvg $<
+	neato -o $@ -Nlabel=' ' -Tsvg $<
 
 %.force:
 	rm -f $*
-	$(THISMAKE) $*
+	$(VIZMAKE) $*
 
 
 .PHONY: examples
 
 examples:
-	$(THISMAKE) examples/g_n2984_m19024.pdf
-	$(THISMAKE) examples/g_n2984_m19024_skel.pdf
+	$(VIZMAKE) examples/g_n2984_m19024.pdf
+	$(VIZMAKE) examples/g_n2984_m19024_skel.pdf
 

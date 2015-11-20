@@ -1,4 +1,4 @@
-# BigGraphTools : Various Graph algorithms implemented in ocaml.
+# BigGraphTools : Various graph algorithms implemented in ocaml.
 
 (Author : Laurent Viennot, Inria 2015)
 
@@ -18,17 +18,19 @@ make
 
 ## Usage
 
-Mainly one tool for the moment : computing ``skeleton graphs''.
+Mainly one tool for the moment : computing ``skeleton graphs''. (A skeleton
+of a graph is a small dominating subgraph with similar distances.)
 
 ### Example:
 
-Compute a skeleton graph (a small dominating subgraph with similar distances) :
+Compute a skeleton graph:
 ```
 ./skeleton.native -verbose 1.2 4 12 graph_edges.csv > skeleton.csv
 ```
 
 This reads the edges of a graph from file `graph_edges.csv` and 
 writes in file `skeleton.csv` the edges of a skeleton of the graph.
+See [`examples/g_n2984_m19024.pdf`](tree/master/examples/) for an example.
 
 Color the edges of the graph :
 ```
@@ -48,7 +50,7 @@ for example.
 Try it with:
 ```
 apt-get install graphviz
-make -f viz.make graph_edges_skel.pdf
+make graph_edges_skel.pdf
 ```
 
 
