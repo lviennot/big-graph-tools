@@ -31,7 +31,7 @@ Compute a skeleton graph:
 This reads the edges of a graph from file `graph_edges.csv` and writes in file
 `skeleton.csv` the edges of a skeleton of the graph.  See
 [`examples/g_n2984_m19024.pdf`](https://who.rocq.inria.fr/Laurent.Viennot/dev/big-graph-tools/examples/g_n2984_m19024.pdf)
-for an example.
+for an example (the graph is in `examples` dir).
 
 Color the edges of the graph :
 ```
@@ -54,6 +54,9 @@ apt-get install graphviz
 make graph_edges_skel.pdf
 ```
 
+This gives
+[`examples/g_n2984_m19024_skel.pdf`](https://who.rocq.inria.fr/Laurent.Viennot/dev/big-graph-tools/examples/g_n2984_m19024_skel.pdf)
+on the above skeleton example.
 
 
 ## Documentation
