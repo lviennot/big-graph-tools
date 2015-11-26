@@ -374,6 +374,8 @@ module Make (V : VertexVec) (E : EdgeVec)
         del_edge g v u
       ) rev_g u ;
       let b = V.default_edge in
+      let deg = fold_succ_l (fun _ _ d -> d+1) g u 0 in
+      g.m <- g.m - deg ;
       V.set_edge_bounds g.v u (b,b) ; (* marks that vertex is not member *)
       V.set_label g.v u V.default_label ;
       if u = g.n - 1 then 

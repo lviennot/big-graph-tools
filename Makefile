@@ -1,25 +1,28 @@
 TARGETS:=skeleton bgtool
 MODS:=traverse.ml
-LIBS:=-lib unix -lib bigarray 
-# -lib graphics -cflags -I,+lablgtk
+LIBS:=-lib unix -lib bigarray -lib str
+#  -lib graphics -cflags -I,+lablgtk
 PACKAGES:=-package ocamlgraph
+# -package batteries 
 APIDOC:=IntDigraph Vector Traversal Skeleton
 SRCS:=$(wildcard src/*.ml) $(wildcard src/*.mli)
 
 
-binaries: tags
+binaries: _tags
 	 ocamlbuild $(LIBS) $(PACKAGES) $(patsubst %,%.native,$(TARGETS))
 
 all: binaries api.doc
 
 
-tags:
-	echo "true:      inline(0)\ntrue:       debug\n<src>:      include" > _tags
+.PHONY: _tags
 
-%.native: tags $(SRCS)
+_tags:
+	(echo "true:      inline(0)" ; echo "true:       debug" ; echo "<src>:      include") > _tags
+
+%.native: _tags $(SRCS)
 	ocamlbuild $(LIBS) $(PACKAGES) $@
 
-unit: tags $(SRCS)
+unit: _tags $(SRCS)
 	ocamlbuild $(LIBS) $(PACKAGES) unit.native --
 
 

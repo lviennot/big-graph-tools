@@ -84,15 +84,15 @@ module Traversal (A : A) = struct
 (** Iterate on [u], [parent(u)], ..., [v] if [v] is ancestor of [u], and
     up to the root of the tree containing [u] otherwise. *)
   let rec iter_path f t u v =
+    f u ;
     let p = parent t u in
-    if p <> u then f p ;
-    if p <> v && p <> u then 
+    if u <> v && p <> u then 
       iter_path f t p v
 
   let rec fold_path f t u v a =
+    let a = f u a in
     let p = parent t u in
-    let a = if p <> u then f p a else a in
-    if p = v || p = u then a else 
+    if u = v || p = u then a else 
       fold_path f t p v a
 
   let path_rev t u w = fold_path (fun v pth -> v :: pth) t u w []

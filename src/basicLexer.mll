@@ -1,6 +1,15 @@
 {
 
-  type token = Int of int | Float of float | String of string | Eof
+  (** Basic Lexer for parsing ints, floats, words and strings.  
+
+      '# ... \n' delimit comments.  Use [BasicLexer.int lex, BasicLexer.float,
+      ...] when you expect the next token to be an [int, float, ...]. Use
+      optional argument [~no_eof:true] to raise an error raser than
+      [End_of_file] when no more token can be read. Use [BasicLexer.search_int
+      lex, ...] when you want to skip anything until the next [int, ...].  *)
+
+  type token = Int of int | Float of float 
+               | String of string | Comment of string | Eof
 
   open Lexing
 
@@ -16,6 +25,9 @@ rule token = parse
 
 | space+
     { token lexbuf }
+
+| '#' ([ ^ '\n' '\r' ]* as c) eol
+    { new_line lexbuf ; Comment c }
 
 | eol 
     { new_line lexbuf ; token lexbuf }
@@ -40,6 +52,7 @@ rule token = parse
     | Float f -> Printf.sprintf "float '%f'" f
     | Int i -> Printf.sprintf "int '%d'" i
     | String s -> Printf.sprintf "string '%s'" s
+    | Comment s -> Printf.sprintf "comment '%s'" s
     | Eof -> "End_of_file"
 
   let error lex got expected =
@@ -54,27 +67,52 @@ rule token = parse
     invalid_arg msg
   
   let token ?(no_eof=false) expected lex =
-    try token lex 
+    try 
+      token lex 
     with End_of_file -> 
       if no_eof then error lex Eof expected else raise End_of_file
 
-  let float ?(no_eof=false) lex =
+
+  let rec float ?(no_eof=false) ?(parse_comment=(fun _ -> ())) lex =
     match token ~no_eof "float" lex with
     | Float f -> f
     | Int i -> float_of_int i
-    | tok -> error lex tok "float"
+    | String _ as tok | (Eof as tok) -> error lex tok "float"
+    | Comment s -> parse_comment s ; float ~no_eof ~parse_comment lex
 
-  let int ?(no_eof=false) lex = 
+  let rec int ?(no_eof=false) ?(parse_comment=(fun _ -> ())) lex = 
     match token ~no_eof:no_eof "int" lex with
     | Int i -> i
-    | tok -> error lex tok "int"
+    | Float _ as tok | (String _ as tok) | (Eof as tok) -> error lex tok "int"
+    | Comment s -> parse_comment s ; int ~no_eof ~parse_comment lex
 
-  let string ?(no_eof=false) lex = 
+  let rec string ?(no_eof=false) ?(parse_comment=(fun _ -> ())) lex = 
     match token ~no_eof "string" lex with
     | Float f -> string_of_float f
     | Int i -> string_of_int i
     | String s -> s
-    | _ -> assert false
+    | Eof as tok -> error lex tok "string"
+    | Comment s -> parse_comment s ; string ~no_eof ~parse_comment lex
+
+
+  let rec search_float ?(no_eof=false) lex =
+    match token ~no_eof "float" lex with
+    | Float f -> f
+    | Int i -> float_of_int i
+    | _ -> search_float ~no_eof lex
+
+  let rec search_int ?(no_eof=false) lex = 
+    match token ~no_eof:no_eof "int" lex with
+    | Int i -> i
+    | _ -> search_int ~no_eof lex
+
+  let rec search_string ?(no_eof=false) lex = 
+    match token ~no_eof "string" lex with
+    | Float f -> string_of_float f
+    | Int i -> string_of_int i
+    | String s -> s
+    | _ -> search_string ~no_eof lex
+
 
   let token ?(no_eof=false) lex = token ~no_eof "token" lex
 
@@ -91,6 +129,11 @@ rule token = parse
     done with End_of_file ->
     ()
 
+
+  let test () = 
+    let lex = Lexing.from_channel stdin in
+    iter (fun t -> Printf.printf "%s\n" (str_of_tok t) ; flush stdout) lex
+
   let unit () =
     (* let lex = Lexing.from_channel stdin in *)
     let lex = Lexing.from_string "lqkdj 123 i? 12ZER -.2e+127 -lsdkjf.sldkf" in
@@ -101,5 +144,6 @@ rule token = parse
       assert false ;
     with Invalid_argument _ ->
     ()
+
 
 }

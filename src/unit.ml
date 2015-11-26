@@ -1,3 +1,4 @@
+(* Laurent Viennot, Inria 2015 *)
 
 let unit () =
   IntDigraph.unit () ;

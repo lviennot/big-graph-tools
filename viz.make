@@ -1,4 +1,4 @@
-SKELETON:=./skeleton.native 1.2 4 12
+SKELETON:=./skeleton.native 1 4 12
 VIZMAKE:=make -f viz.make
 
 help:

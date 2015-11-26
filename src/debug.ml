@@ -80,7 +80,7 @@ let progress_lap () =
 let info ?(lap=false) fmt =
   if !level = INFO then begin
     let now = Unix.time () in
-    let time_ellapsed =
+    let time_ellapsed_mem =
       let total = now -. start_t in
       let progress = now -. !progress_t in
       if !in_progress then (Printf.eprintf "\n" ; in_progress := false) ;
@@ -90,10 +90,12 @@ let info ?(lap=false) fmt =
         else if t < 1. then Printf.sprintf "%.1fs" t
         else Printf.sprintf "%.0fs" t
       in
-      Printf.sprintf "%s, %s, %s" (s progress) (s proglap) (s total)
+      if (not lap) && progress < 1. then ""
+      else Printf.sprintf " (%s, %s, %s)" 
+              (* s progress *) (s proglap) (s total) (mem_usage ())
     in
     let after msg =
-      Printf.eprintf "%-70s (%s, %s)\n" msg time_ellapsed (mem_usage ()) ;
+      Printf.eprintf "%-70s%s\n" msg time_ellapsed_mem  ;
       flush stderr ;
       progress_t := now ;
       if lap then lap_t := now ;

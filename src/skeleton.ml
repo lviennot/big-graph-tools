@@ -124,14 +124,35 @@ module Skeleton (A : Traversal.A) (G : G) = struct
     let root v = A.get root_node v in
     let visit = Bfs.order t in
 
-  (* A branch is covered and ignored if at distance [<= tadd] from parent branch *)
+  (* A branch is covered and ignored if at distance [<= tadd] from parent 
+     branch. *)
     let ncov = ref 0 and covedges = ref 0 in
     for i = 0 to n - 1 do
       let v = A.get visit i in
       let p = Bfs.parent t v in
       if i > 0 && root v = v then begin
-        if not (A.get mark p) then 
-          failwith "Not implemented : parent branch is already covered." ;
+        let v, p =
+          if not (A.get mark p) then begin
+            (* failwith "Not implemented : parent branch is already covered."*)
+            (* Re-attach branch *)
+            let rec iter v p =
+              if A.get mark p then v, p else begin
+                A.set mark p true ;
+                iter p (Bfs.parent t p)
+              end
+            in 
+            let v', p' = iter v p in
+            (* v' is a root again *)
+            let v_desc = A.get desc_node v in
+            let branch = Bfs.path_rev t v_desc v' in
+            List.iter (fun v ->
+              A.set root_node v v' ;
+              A.set desc_node v v_desc ;
+            ) branch ;
+            v', p'
+          end else
+            v, p 
+        in
         let pbranch = Bfs.path_rev t (A.get desc_node (root p)) (root p) in
         let branch = Bfs.path_rev t (A.get desc_node v) v in
         let branch_forest = Bfs.forest ~follow_pred:true g pbranch in
@@ -213,10 +234,23 @@ module Skeleton (A : Traversal.A) (G : G) = struct
         Debug.distr (Printf.sprintf "branch_%d_%d_dist" u v) d' ;
         if d' <= tadd then begin
           let path = Bfs.path_rev branch_forest v' Bfs.non_vertex in
+          let nb_new_lk = 
+            let rec iter s = function
+              | [] | [_] -> s
+              | u' :: v' :: path ->
+                let s =
+                  if not (G.mem_edge skel u' v' || G.mem_edge skel v' u')
+                  then s+1 else s in
+                iter s (v' :: path)
+            in iter 0 path
+          in
           let w' = List.hd path in
           (* Add bridge if it does not create a short cycle. *)
-          if d' + Bfs.find_dist ~follow_pred:true skel_cp v' w' >= girth 
+          if nb_new_lk + Bfs.find_dist ~follow_pred:true skel_cp v' w' >= girth 
           then begin
+            Debug.info "bfs dist %d %d = %d + %d,%d " 
+              v' w' (Bfs.find_dist ~follow_pred:true skel_cp v' w') 
+              d' nb_new_lk ;
             Debug.distr (Printf.sprintf "branch_%d_%d_close_at" u v) !i ;
             (*  Debug.info "branch_%d_%d : link at %d : %d -- %d (dist %d)"
               u v !i v' w' (List.length path - 1) ;
@@ -390,4 +424,4 @@ let main () =
   () 
 
 let () =
-  Debug.run ~verbose:(TrivialArg.boolOption "-verbose") main
+  Debug.run ~verbose:(TrivialArg.boolOption "-verbose" "set verbose mode") main
