@@ -341,7 +341,7 @@ let main () =
   let girth = TrivialArg.int "girth" in
   let fname = TrivialArg.string "edge_file" in
   let format = 
-    try TrivialArg.string "format (csv/dot/gdf)" with _-> "csv"
+    try TrivialArg.string "format (csv/dot/gdf/fulldot)" with _-> "csv"
   in
   Debug.info "File %s will output in format %s" fname format ;
   let cin = if fname = "-" then stdin else open_in fname in
@@ -382,12 +382,27 @@ let main () =
     | "dot" ->
       prt "digraph g_skel {\n" ;
       prt "  %d [ color=\"blue\" ];\n" (vtx root) ;
-
       G.iter_edges (fun u v -> 
         if G.mem_edge skel_inter u v || G.mem_edge skel_inter v u
         then prt "  %d -> %d [ color=\"red\" ];\n" (vtx u) (vtx v)
         else prt "  %d -> %d [ color=\"green\" ];\n" (vtx u) (vtx v) ;
       ) skel ;
+      prt "}\n" ;
+
+    | "fulldot" -> (* full graph with skeleton colored *)
+      prt "digraph g_skel {\n" ;
+      G.iter_vertex (fun u -> 
+        if u <> root && G.mem_vertex skel u then
+          prt "  %d [ color=\"red\" ];\n" (vtx u) ;
+      ) g ;
+      prt "  %d [ color=\"blue\" ];\n" (vtx root) ;
+      G.iter_edges (fun u v -> 
+        if G.mem_edge skel_inter u v || G.mem_edge skel_inter v u
+        then prt "  %d -> %d [ color=\"red\" ];\n" (vtx u) (vtx v)
+        else if G.mem_edge skel u v || G.mem_edge skel v u
+        then prt "  %d -> %d [ color=\"green\" ];\n" (vtx u) (vtx v)
+        else prt "  %d -> %d;\n" (vtx u) (vtx v) ;
+      ) g ;
       prt "}\n" ;
 
     | "gdf" ->

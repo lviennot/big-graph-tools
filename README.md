@@ -2,6 +2,13 @@
 
 (Author : Laurent Viennot, Inria 2015)
 
+This library provides an ocaml graph implementation with pretty low memory
+usage: a graph with `n` nodes and `m` edges is represented within `2n+m` words
+when edges with same source are added consecutively. Using bigarrays, unweighted
+graphs with less than `2^31` nodes can be represented withing `12n+4m` bytes.
+
+[Home page](https://who.rocq.inria.fr/Laurent.Viennot/dev/big-graph-tools/)
+
 ## Install
 
 You can install ocaml and required modules with opam, something like :
@@ -18,10 +25,25 @@ make
 
 ## Usage
 
-Mainly one tool for the moment : computing ``skeleton graphs''. (A skeleton
+Tools provided for the moment : 
+ * Computing the diameter and radius of a graph. (Diameter is the maximum
+excentricity of a node, and radius minimum excentricity.)
+ * Computing ``skeleton graphs''. (A skeleton
 of a graph is a small dominating subgraph with similar distances.)
 
 ### Example:
+
+Compute the diameter of the largest strongly connected component of a weighted 
+directed graph:
+```
+./bgtool.native -verbose read-src-dst-wgt weighted_edges.csv diameter
+```
+
+This reads the edges of a graph as a sequence of integer triples 
+`source destination weight` (tab or space separated). The strongly connected 
+components and the reverse graph are then computed. A SumSweep like algorithm
+is then used to compute the diameter of the largest strongly connected 
+component.
 
 Compute a skeleton graph:
 ```

@@ -68,6 +68,12 @@ module type AnyType = sig
   type t
 end
 
+(** Signature for elements that can be compared. *)
+module type ComparableType = sig
+  type t
+  val compare : t -> t -> int
+end
+
 
 (** Get a Vector from an Array. *)
 module OfArrayGap (A : ArrayType) (E : DefaultValType with type t = A.elt) 
@@ -190,6 +196,10 @@ module QueueOfArray (A : ArrayType) = struct
 
   let is_empty t = t.front = t.back
 
+  let clear t =
+    t.front <- 0 ; t.back <- 0 ;
+    V.clear t.v
+
   let add t e = 
     V.set t.v t.back e ;
     t.back <- t.back + 1
@@ -211,6 +221,8 @@ module QueueOfArray (A : ArrayType) = struct
     if t.front > t.back / 2 && t.back > (V.capacity t.v) / 2 then compact t ;
     e
 
+  let size t = t.back - t.front
+
 end
 
 
@@ -226,6 +238,10 @@ module StackOfArray (A : ArrayType) = struct
     { v = V.make ~size:size () ; back = -1 ; }
 
   let is_empty t = t.back < 0
+
+  let clear t =
+    t.back <- -1 ;
+    V.clear t.v
 
   let add t e = 
     t.back <- t.back + 1 ;
@@ -243,11 +259,82 @@ module StackOfArray (A : ArrayType) = struct
     t.back <- t.back - 1 ;
     e
 
+  let size t = t.back + 1
+
+end
+
+
+(** Heap implementation in a vector. Minimum gets first out. *)
+module HeapOfArray (A : ArrayType)  (E : ComparableType with type t = A.elt)
+= struct
+
+  module V = OfArray (A)
+
+  type t = { mutable v : V.t ; mutable back : int ; }
+  type elt = V.elt
+
+  let create ?(size=4) () =
+    { v = V.make ~size:(size+1) () ; back = -1 ; }
+
+  let is_empty t = t.back < 0
+
+  let clear t =
+    t.back <- -1 ;
+    V.clear t.v
+
+  let add t e = 
+    t.back <- t.back + 1 ;
+    let rec moveup i =
+      if i = 0 then V.set t.v i e else begin
+        let i' = (i+1) / 2 - 1 in (* parent *)
+        let e' = V.get t.v i' in
+        if E.compare e e' > 0 then V.set t.v i e else begin
+          V.set t.v i e' ;
+          moveup i'
+        end
+      end
+    in moveup t.back
+
+  let push = add
+
+  let peek_min t = 
+    if is_empty t then raise Not_found ;
+    V.get t.v 1
+
+  let pop_min t = 
+    if is_empty t then raise Not_found ;
+    let e_min = V.get t.v 0 in
+    if t.back = 0 then t.back <- -1 (* it was last element *) 
+    else begin
+      let e = V.get t.v t.back in
+      t.back <- t.back - 1 ;
+      let rec movedown i =
+        let i1 = 2 * i + 1 in (* first son *)
+        if i1 > t.back then V.set t.v i e else begin
+          let i2 = i1 + 1 in (* second son *)
+          let i' = 
+            if i2 <= t.back && E.compare (V.get t.v i2) (V.get t.v i1) < 0
+            then i2 else i1 in
+          let e' = V.get t.v i' in
+          if E.compare e e' < 0 then V.set t.v i e 
+          else begin
+            V.set t.v i e' ;
+            movedown i'
+          end
+        end
+      in movedown 0
+    end ;
+    e_min
+
+  let size t = t.back
+
 end
 
 
 
-module Array (E : AnyType) : ArrayType with type elt = E.t = struct
+
+
+module MakeArray (E : AnyType) : ArrayType with type elt = E.t = struct
   type t = E.t array
   type elt = E.t
   include Array
@@ -256,16 +343,18 @@ end
 
 (** Vectors with gaps from usual arrays. [get v i] and [set v i e] are allowed
     for all [i >= 0]. *)
-module MakeGap (E : DefaultValType) = OfArrayGap (Array(E)) (E)
+module MakeGap (E : DefaultValType) = OfArrayGap (MakeArray(E)) (E)
 
 (** Vectors from usual arrays. [get v i] is allowed
     for [i] in [0..length v -1]. [set v i e] is allowed for [i] in [0..length
     v]. *)
-module Make (E : AnyType) = OfArray (Array(E))
+module Make (E : AnyType) = OfArray (MakeArray(E))
 
-module Queue (E : AnyType) = QueueOfArray (Array(E))
+module Queue (E : AnyType) = QueueOfArray (MakeArray(E))
 
-module Stack (E : AnyType) = StackOfArray (Array(E))
+module Stack (E : AnyType) = StackOfArray (MakeArray(E))
+
+module Heap (E : ComparableType) = HeapOfArray (MakeArray(E)) (E)
 
 (** Examples of vector usage : 
 
@@ -291,3 +380,21 @@ module Util (A : ArrayType) = struct
 
 end
 
+
+let unit () =
+  let module H = Heap (struct type t = int let compare = compare end) in
+  let h = H.create () in
+  let a = [|3;7;1;2;9;7;8;4;3;2;6;7;|] in
+  Array.iter (H.push h) a ;
+  Array.sort compare a ;
+  Printf.printf "Heap :" ;
+  let i = ref 0 in
+  while not (H.is_empty h) do
+    let m = H.pop_min h in
+    Printf.printf " %d" m ;
+    assert (a.(!i) = m) ;
+    incr i ;
+  done ;
+  assert (!i = Array.length a) ;
+  Printf.printf "\n" ;
+  ()

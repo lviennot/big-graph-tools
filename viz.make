@@ -1,5 +1,7 @@
-SKELETON:=./skeleton.native 1 4 12
+SKELETON:=./skeleton.native -verbose 0. 6 12
 VIZMAKE:=make -f viz.make
+GRAPHVIZ:=neato -Ksfdp -Goverlap=scale -Gsplines=curved -Nlabel="" -Earrowhead=none -Nshape=circle -Nstyle=filled -Nwidth=.1 -Ncolor="\#00000060" -Ecolor="\#00000020"
+# -Nstyle=filled -Nheight=1 -Nwidth=1 -Nfixedsize=true
 
 help:
 	@echo "Visualize some graphs."
@@ -13,14 +15,17 @@ help:
 %_skel.dot: %.csv
 	$(SKELETON) $< dot > $@
 
+%.dot: %.csv
+	$(SKELETON) $< fulldot > $@
+
 %.gdf: %.csv
 	$(SKELETON) $< gdf > $@
 
 %.pdf: %.dot
-	neato -o $@ -Tpdf $<
+	$(GRAPHVIZ) -o $@ -Tpdf $<
 
 %.svg: %.dot
-	neato -o $@ -Nlabel=' ' -Tsvg $<
+	$(GRAPHVIZ) -o $@ -Tsvg $<
 
 %.force:
 	rm -f $*

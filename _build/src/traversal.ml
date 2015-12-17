@@ -84,15 +84,15 @@ module Traversal (A : A) = struct
 (** Iterate on [u], [parent(u)], ..., [v] if [v] is ancestor of [u], and
     up to the root of the tree containing [u] otherwise. *)
   let rec iter_path f t u v =
+    f u ;
     let p = parent t u in
-    if p <> u then f p ;
-    if p <> v && p <> u then 
+    if u <> v && p <> u then 
       iter_path f t p v
 
   let rec fold_path f t u v a =
+    let a = f u a in
     let p = parent t u in
-    let a = if p <> u then f p a else a in
-    if p = v || p = u then a else 
+    if u = v || p = u then a else 
       fold_path f t p v a
 
   let path_rev t u w = fold_path (fun v pth -> v :: pth) t u w []
@@ -119,7 +119,7 @@ module Bfs (A : A) (G : G) = struct
   module T = Traversal (A)
   include T
 
-  module Queue = Vector.Queue (struct type t = int let default = 0 end)
+  module Queue = Vector.Queue (struct type t = int end)
 
   exception Found of T.t
 
@@ -159,6 +159,40 @@ module Bfs (A : A) (G : G) = struct
     else T.dist f v
 
 end
+
+
+module Dfs (A : A) (G : G) = struct
+
+  module T = Traversal (A)
+  include T
+
+  module Stack = Vector.Stack (struct 
+    type t = int let default = 0 
+  end)
+
+  exception Found of T.t
+
+  let def g s =
+    let n = G.n g in
+    let f = T.make n in
+    let unvisited u = T.visit_nb f u = T.non_vertex in
+    let nb = ref 0 in
+    let q = Stack.create ~size:(max 8 (n/8)) () in
+    let push u parent =
+      if unvisited u then begin
+        T.set f u !nb 0 parent ;
+        incr nb ;
+      end
+    in
+    push s s ;
+    while not (Stack.is_empty q) do
+      let u = Stack.pop q in
+      G.iter_succ (fun v -> push v u) g u ;
+    done ;
+    f
+
+end
+
 
 module Array : A = struct
   type 'a t = 'a array

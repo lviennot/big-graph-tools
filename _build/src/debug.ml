@@ -1,6 +1,6 @@
 type t = NOTHING | PROG | INFO
 
-let level = ref PROG
+let level = ref NOTHING
 
 let to_string d = 
   match d with NOTHING -> "no" | PROG -> "prog" | INFO -> "info"
@@ -17,11 +17,12 @@ let set_verbosity s =
 let verbosity () = 
   to_string !level
 
-let start_t = Unix.time ()
+let start_t = Sys.time ()
 let lap_t = ref start_t
 let progress_t = ref start_t
 let in_progress = ref false
 let max_mem = ref 0
+let add_mem = ref 0
 
 let mem_to_string mem =
   let mem, unit =
@@ -32,16 +33,20 @@ let mem_to_string mem =
   in
   Printf.sprintf "%d%s" mem unit
 
+let mem_add bytes = add_mem := !add_mem + bytes
+let mem_sub bytes = add_mem := !add_mem -bytes
+
 let mem_usage () =
   let mem =
-    8 * let s = Gc.quick_stat() in s.Gc.heap_words + s.Gc.stack_size in
+    !add_mem + 
+      8 * let s = Gc.quick_stat() in s.Gc.heap_words + s.Gc.stack_size in
   if mem > !max_mem then max_mem := mem ;
   mem_to_string mem
 
 let progress ndone ntotal fmt =
   let after str =
     if !level <> NOTHING then
-      let now = Unix.time () in
+      let now = Sys.time () in
       (* Printf.eprintf "ntot=%d ndone=%d now=%f prg=%f lap=%f\n" ntotal ndone now !progress_t !lap_t ; flush stderr ; *)
       if (ntotal > 0 && ndone = ntotal) || now >= !progress_t +. 10.
         || (now >= !progress_t +. 1. && now <= !lap_t +. 30.)
@@ -67,20 +72,20 @@ let progress ndone ntotal fmt =
   in
   Printf.ksprintf after fmt
 
-let progress_lap () =
+let lap () =
   if !level <> NOTHING then begin
     if !in_progress then (Printf.eprintf "\n" ; flush stderr) ;
     in_progress := false ;
-    let now = Unix.time () in
+    let now = Sys.time () in
     lap_t := now ;
     progress_t := now ;
   end
 
-(* Use [~lap:true] to start a new lap. *)
-let info ?(lap=false) fmt =
+(* Use [~lap:false] when mixing [info] and [progress]. *)
+let info ?(lap=true) fmt =
   if !level = INFO then begin
-    let now = Unix.time () in
-    let time_ellapsed =
+    let now = Sys.time () in
+    let time_ellapsed_mem =
       let total = now -. start_t in
       let progress = now -. !progress_t in
       if !in_progress then (Printf.eprintf "\n" ; in_progress := false) ;
@@ -90,10 +95,12 @@ let info ?(lap=false) fmt =
         else if t < 1. then Printf.sprintf "%.1fs" t
         else Printf.sprintf "%.0fs" t
       in
-      Printf.sprintf "%s, %s, %s" (s progress) (s proglap) (s total)
+      if (not lap) && progress < 1. then ""
+      else Printf.sprintf " (%s, %s, %s)" 
+              (* s progress *) (s proglap) (s total) (mem_usage ())
     in
     let after msg =
-      Printf.eprintf "%-70s (%s, %s)\n" msg time_ellapsed (mem_usage ()) ;
+      Printf.eprintf "%-70s%s\n" msg time_ellapsed_mem  ;
       flush stderr ;
       progress_t := now ;
       if lap then lap_t := now ;
@@ -206,7 +213,7 @@ let the_end () =
       flush stderr ;
     end ;
     Printf.eprintf "Total time : %.0fs   Max mem : %s\n" 
-      (Unix.time () -. start_t) (mem_to_string !max_mem) ;
+      (Sys.time () -. start_t) (mem_to_string !max_mem) ;
   end ;
   flush stderr
 
@@ -215,9 +222,11 @@ let run ?(verbose=false) main =
   Printexc.record_backtrace true ;
   try
     if verbose then set_verbosity "info"  ;
+    info "--- Begin main() ---" ;
     
     main () ;
-      
+
+    info "--- End main() ---" ;
     if verbose then the_end () ;
   with e ->
     flush stdout ;

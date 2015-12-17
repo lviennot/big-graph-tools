@@ -40,11 +40,11 @@ let goIG constr n m =
   let g = G.create ~n:n ~m:m () in
   Debug.info "%s created" modG ;
   constr (G.add_edge g) (G.add_vertex g) n m ;
-  Debug.info ~lap:true "%s filled" modG ;
+  Debug.info "%s filled" modG ;
   let um, dm = g_vertex_max_deg G.fold_vertex G.out_degree g in
-  Debug.info ~lap:true "%s deg max : %d at %d" modG dm um ;
+  Debug.info "%s deg max : %d at %d" modG dm um ;
   G.sort g ;
-  Debug.info ~lap:true "%s sorted" modG ;
+  Debug.info "%s sorted" modG ;
   let t = Bfs.tree g um in
   Debug.info "%s Bfs %d visited" modG (Traversal.nb_visited t) ;
   ()
@@ -59,11 +59,11 @@ let goHG constr n m =
   let g = G.create ~n:n ~m:m () in
   Debug.info "%s created" modG ;
   constr (G.add_edge g) (G.add_vertex g) n m ;
-  Debug.info ~lap:true "%s filled" modG ;
+  Debug.info "%s filled" modG ;
   let um, dm = g_vertex_max_deg G.fold_vertex G.out_degree g in
-  Debug.info ~lap:true "%s deg max : %d at %d" modG dm um ;
+  Debug.info "%s deg max : %d at %d" modG dm um ;
   G.sort g ;
-  Debug.info ~lap:true "%s sorted" modG ;
+  Debug.info "%s sorted" modG ;
   let t = Bfs.tree g um in
   Debug.info "%s Bfs %d visited" modG (Traversal.nb_visited t) ;
   ()
@@ -81,11 +81,11 @@ let goBG constr n m =
   let g = G.create ~n:n ~m:m () in
   Debug.info "%s created" modG ;
   constr (G.add_edge g) (G.add_vertex g) n m ;
-  Debug.info ~lap:true "%s filled" modG ;
+  Debug.info "%s filled" modG ;
   let um, dm = g_vertex_max_deg G.fold_vertex G.out_degree g in
-  Debug.info ~lap:true "%s deg max : %d at %d" modG dm um ;
+  Debug.info "%s deg max : %d at %d" modG dm um ;
   G.sort g ;
-  Debug.info ~lap:true "%s sorted" modG ;
+  Debug.info "%s sorted" modG ;
   let t = Bfs.tree g um in
   Debug.info "%s Bfs %d visited" modG (Traversal.nb_visited t) ;
   ()
@@ -111,9 +111,9 @@ let goOG constr n m =
   let g = G.create ~size:n () in
   Debug.info "%s created" modG ;
   constr (G.add_edge g) (G.add_vertex g) n m ;
-  Debug.info ~lap:true "%s filled" modG ;
+  Debug.info "%s filled" modG ;
   let um, dm = g_vertex_max_deg G.fold_vertex G.out_degree g in
-  Debug.info ~lap:true "%s deg max : %d at %d" modG dm um ;
+  Debug.info "%s deg max : %d at %d" modG dm um ;
   let t = Bfs.tree g um in
   Debug.info "%s Bfs %d visited" modG (Traversal.nb_visited t) ;
   ()

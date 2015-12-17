@@ -1,6 +1,7 @@
 TARGETS:=skeleton bgtool
 MODS:=traverse.ml
-LIBS:=-lib unix -lib bigarray -lib str
+LIBS:=-lib bigarray -lib str -lib unix
+OPTS:=-cflags -ccopt,-O3
 #  -lib graphics -cflags -I,+lablgtk
 PACKAGES:=-package ocamlgraph
 # -package batteries 
@@ -9,7 +10,7 @@ SRCS:=$(wildcard src/*.ml) $(wildcard src/*.mli)
 
 
 binaries: _tags
-	 ocamlbuild $(LIBS) $(PACKAGES) $(patsubst %,%.native,$(TARGETS))
+	 ocamlbuild $(OPTS) $(LIBS) $(PACKAGES) $(patsubst %,%.native,$(TARGETS))
 
 all: binaries api.doc
 
@@ -17,10 +18,10 @@ all: binaries api.doc
 .PHONY: _tags
 
 _tags:
-	(echo "true:      inline(0)" ; echo "true:       debug" ; echo "<src>:      include") > _tags
+	(echo "true:      inline(20)" ; echo "true:       debug" ; echo "<src>:      include") > _tags
 
 %.native: _tags $(SRCS)
-	ocamlbuild $(LIBS) $(PACKAGES) $@
+	ocamlbuild $(OPTS) $(LIBS) $(PACKAGES) $@
 
 unit: _tags $(SRCS)
 	ocamlbuild $(LIBS) $(PACKAGES) unit.native --
@@ -39,7 +40,7 @@ ocaml:
 
 
 
-.PHONY: doc
+.PHONY: api.doc
 
 api.doc: 
 	rm -f $@ api.odocl

@@ -30,17 +30,17 @@ let next () =
 let string help = 
   try 
     next ()
-  with _ -> invalid_arg "Argument [%s] missing" help
+  with _ -> invalid_arg "argument [%s] missing" help
 
 let int help =
   try
     int_of_string (next ())
-  with _ -> invalid_arg "Argument [%s]: int expected" help
+  with _ -> invalid_arg "argument [%s]: int expected" help
 
 let float help =
   try
     float_of_string (next ())
-  with _ -> invalid_arg "Argument [%s]: float expected" help
+  with _ -> invalid_arg "argument [%s]: float expected" help
 
 
 (** Read distant argument (found by key). *)

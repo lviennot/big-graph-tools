@@ -1,34 +1,64 @@
 ### Starting build.
-# Target: src/unit.ml.depends, tags: { debug, extension:ml, file:src/unit.ml, inline(0), ocaml, ocamldep, quiet, traverse }
-/Users/viennot/.opam/4.02.2/bin/ocamldep.opt -modules src/unit.ml > src/unit.ml.depends
-# Target: src/debug.ml.depends, tags: { debug, extension:ml, file:src/debug.ml, inline(0), ocaml, ocamldep, quiet, traverse }
-/Users/viennot/.opam/4.02.2/bin/ocamldep.opt -modules src/debug.ml > src/debug.ml.depends
-# Target: src/intDigraph.ml.depends, tags: { debug, extension:ml, file:src/intDigraph.ml, inline(0), ocaml, ocamldep, quiet, traverse }
-/Users/viennot/.opam/4.02.2/bin/ocamldep.opt -modules src/intDigraph.ml > src/intDigraph.ml.depends
-# Target: src/vector.ml.depends, tags: { debug, extension:ml, file:src/vector.ml, inline(0), ocaml, ocamldep, quiet, traverse }
-/Users/viennot/.opam/4.02.2/bin/ocamldep.opt -modules src/vector.ml > src/vector.ml.depends
-# Target: src/vector.cmo, tags: { byte, compile, debug, extension:cmo, extension:ml, file:src/vector.cmo, file:src/vector.ml, implem, inline(0), ocaml, quiet, traverse }
-/Users/viennot/.opam/4.02.2/bin/ocamlc.opt -c -I /Users/viennot/.opam/4.02.2/lib/ocamlgraph -g -I src -o src/vector.cmo src/vector.ml
-# Target: src/traversal.ml.depends, tags: { debug, extension:ml, file:src/traversal.ml, inline(0), ocaml, ocamldep, quiet, traverse }
-/Users/viennot/.opam/4.02.2/bin/ocamldep.opt -modules src/traversal.ml > src/traversal.ml.depends
-# Target: src/intDigraph.cmo, tags: { byte, compile, debug, extension:cmo, extension:ml, file:src/intDigraph.cmo, file:src/intDigraph.ml, implem, inline(0), ocaml, quiet, traverse }
-/Users/viennot/.opam/4.02.2/bin/ocamlc.opt -c -I /Users/viennot/.opam/4.02.2/lib/ocamlgraph -g -I src -o src/intDigraph.cmo src/intDigraph.ml
-# Target: src/debug.cmo, tags: { byte, compile, debug, extension:cmo, extension:ml, file:src/debug.cmo, file:src/debug.ml, implem, inline(0), ocaml, quiet, traverse }
-/Users/viennot/.opam/4.02.2/bin/ocamlc.opt -c -I /Users/viennot/.opam/4.02.2/lib/ocamlgraph -g -I src -o src/debug.cmo src/debug.ml
-# Target: src/traversal.cmo, tags: { byte, compile, debug, extension:cmo, extension:ml, file:src/traversal.cmo, file:src/traversal.ml, implem, inline(0), ocaml, quiet, traverse }
-/Users/viennot/.opam/4.02.2/bin/ocamlc.opt -c -I /Users/viennot/.opam/4.02.2/lib/ocamlgraph -g -I src -o src/traversal.cmo src/traversal.ml
-# Target: src/unit.cmo, tags: { byte, compile, debug, extension:cmo, extension:ml, file:src/unit.cmo, file:src/unit.ml, implem, inline(0), ocaml, quiet, traverse }
-/Users/viennot/.opam/4.02.2/bin/ocamlc.opt -c -I /Users/viennot/.opam/4.02.2/lib/ocamlgraph -g -I src -o src/unit.cmo src/unit.ml
-# Target: src/vector.cmx, tags: { compile, debug, extension:cmx, extension:ml, file:src/vector.cmx, file:src/vector.ml, implem, inline(0), native, ocaml, quiet, traverse }
-/Users/viennot/.opam/4.02.2/bin/ocamlopt.opt -c -I /Users/viennot/.opam/4.02.2/lib/ocamlgraph -g -inline 0 -I src -o src/vector.cmx src/vector.ml
-# Target: src/intDigraph.cmx, tags: { compile, debug, extension:cmx, extension:ml, file:src/intDigraph.cmx, file:src/intDigraph.ml, implem, inline(0), native, ocaml, quiet, traverse }
-/Users/viennot/.opam/4.02.2/bin/ocamlopt.opt -c -I /Users/viennot/.opam/4.02.2/lib/ocamlgraph -g -inline 0 -I src -o src/intDigraph.cmx src/intDigraph.ml
-# Target: src/debug.cmx, tags: { compile, debug, extension:cmx, extension:ml, file:src/debug.cmx, file:src/debug.ml, implem, inline(0), native, ocaml, quiet, traverse }
-/Users/viennot/.opam/4.02.2/bin/ocamlopt.opt -c -I /Users/viennot/.opam/4.02.2/lib/ocamlgraph -g -inline 0 -I src -o src/debug.cmx src/debug.ml
-# Target: src/traversal.cmx, tags: { compile, debug, extension:cmx, extension:ml, file:src/traversal.cmx, file:src/traversal.ml, implem, inline(0), native, ocaml, quiet, traverse }
-/Users/viennot/.opam/4.02.2/bin/ocamlopt.opt -c -I /Users/viennot/.opam/4.02.2/lib/ocamlgraph -g -inline 0 -I src -o src/traversal.cmx src/traversal.ml
-# Target: src/unit.cmx, tags: { compile, debug, extension:cmx, extension:ml, file:src/unit.cmx, file:src/unit.ml, implem, inline(0), native, ocaml, quiet, traverse }
-/Users/viennot/.opam/4.02.2/bin/ocamlopt.opt -c -I /Users/viennot/.opam/4.02.2/lib/ocamlgraph -g -inline 0 -I src -o src/unit.cmx src/unit.ml
-# Target: src/unit.native, tags: { debug, dont_link_with, extension:native, file:src/unit.native, inline(0), link, native, ocaml, program, quiet, traverse }
-/Users/viennot/.opam/4.02.2/bin/ocamlopt.opt unix.cmxa bigarray.cmxa -I /Users/viennot/.opam/4.02.2/lib/ocamlgraph /Users/viennot/.opam/4.02.2/lib/ocamlgraph/graph.cmxa -g src/debug.cmx src/vector.cmx src/intDigraph.cmx src/traversal.cmx src/unit.cmx -o src/unit.native
+# Target: src/unit.ml.depends, tags: { debug, extension:ml, file:src/unit.ml, inline(20), ocaml, ocamldep, quiet, traverse }
+/opt/local/bin/ocamldep.opt -modules src/unit.ml > src/unit.ml.depends
+# Target: src/component.ml.depends, tags: { debug, extension:ml, file:src/component.ml, inline(20), ocaml, ocamldep, quiet, traverse }
+/opt/local/bin/ocamldep.opt -modules src/component.ml > src/component.ml.depends
+# Target: src/debug.ml.depends, tags: { debug, extension:ml, file:src/debug.ml, inline(20), ocaml, ocamldep, quiet, traverse }
+/opt/local/bin/ocamldep.opt -modules src/debug.ml > src/debug.ml.depends
+# Target: src/graphIO.ml.depends, tags: { debug, extension:ml, file:src/graphIO.ml, inline(20), ocaml, ocamldep, quiet, traverse }
+/opt/local/bin/ocamldep.opt -modules src/graphIO.ml > src/graphIO.ml.depends
+# Target: src/basicLexer.mll, tags: { debug, extension:mll, file:src/basicLexer.mll, inline(20), lexer, ocaml, ocamllex, quiet, traverse }
+/opt/local/bin/ocamllex.opt -q src/basicLexer.mll
+# Target: src/basicLexer.ml.depends, tags: { debug, extension:ml, file:src/basicLexer.ml, inline(20), ocaml, ocamldep, quiet, traverse }
+/opt/local/bin/ocamldep.opt -modules src/basicLexer.ml > src/basicLexer.ml.depends
+# Target: src/debug.cmo, tags: { byte, compile, debug, extension:cmo, extension:ml, file:src/debug.cmo, file:src/debug.ml, implem, inline(20), ocaml, quiet, traverse }
+/opt/local/bin/ocamlc.opt -c -I /Users/viennot/.opam/system/lib/ocamlgraph -g -I src -o src/debug.cmo src/debug.ml
+# Target: src/sig.mli.depends, tags: { debug, extension:mli, file:src/sig.mli, inline(20), ocaml, ocamldep, quiet, traverse }
+/opt/local/bin/ocamldep.opt -modules src/sig.mli > src/sig.mli.depends
+# Target: src/basicLexer.cmo, tags: { byte, compile, debug, extension:cmo, extension:ml, file:src/basicLexer.cmo, file:src/basicLexer.ml, implem, inline(20), ocaml, quiet, traverse }
+/opt/local/bin/ocamlc.opt -c -I /Users/viennot/.opam/system/lib/ocamlgraph -g -I src -o src/basicLexer.cmo src/basicLexer.ml
+# Target: src/sig.cmi, tags: { byte, compile, debug, extension:mli, file:src/sig.mli, inline(20), interf, ocaml, quiet, traverse }
+/opt/local/bin/ocamlc.opt -c -I /Users/viennot/.opam/system/lib/ocamlgraph -g -I src -o src/sig.cmi src/sig.mli
+# Target: src/indexGraph.ml.depends, tags: { debug, extension:ml, file:src/indexGraph.ml, inline(20), ocaml, ocamldep, quiet, traverse }
+/opt/local/bin/ocamldep.opt -modules src/indexGraph.ml > src/indexGraph.ml.depends
+# Target: src/vector.ml.depends, tags: { debug, extension:ml, file:src/vector.ml, inline(20), ocaml, ocamldep, quiet, traverse }
+/opt/local/bin/ocamldep.opt -modules src/vector.ml > src/vector.ml.depends
+# Target: src/graphIO.cmo, tags: { byte, compile, debug, extension:cmo, extension:ml, file:src/graphIO.cmo, file:src/graphIO.ml, implem, inline(20), ocaml, quiet, traverse }
+/opt/local/bin/ocamlc.opt -c -I /Users/viennot/.opam/system/lib/ocamlgraph -g -I src -o src/graphIO.cmo src/graphIO.ml
+# Target: src/indexGraph.cmo, tags: { byte, compile, debug, extension:cmo, extension:ml, file:src/indexGraph.cmo, file:src/indexGraph.ml, implem, inline(20), ocaml, quiet, traverse }
+/opt/local/bin/ocamlc.opt -c -I /Users/viennot/.opam/system/lib/ocamlgraph -g -I src -o src/indexGraph.cmo src/indexGraph.ml
+# Target: src/vector.cmo, tags: { byte, compile, debug, extension:cmo, extension:ml, file:src/vector.cmo, file:src/vector.ml, implem, inline(20), ocaml, quiet, traverse }
+/opt/local/bin/ocamlc.opt -c -I /Users/viennot/.opam/system/lib/ocamlgraph -g -I src -o src/vector.cmo src/vector.ml
+# Target: src/intDigraph.ml.depends, tags: { debug, extension:ml, file:src/intDigraph.ml, inline(20), ocaml, ocamldep, quiet, traverse }
+/opt/local/bin/ocamldep.opt -modules src/intDigraph.ml > src/intDigraph.ml.depends
+# Target: src/traversal.ml.depends, tags: { debug, extension:ml, file:src/traversal.ml, inline(20), ocaml, ocamldep, quiet, traverse }
+/opt/local/bin/ocamldep.opt -modules src/traversal.ml > src/traversal.ml.depends
+# Target: src/intDigraph.cmo, tags: { byte, compile, debug, extension:cmo, extension:ml, file:src/intDigraph.cmo, file:src/intDigraph.ml, implem, inline(20), ocaml, quiet, traverse }
+/opt/local/bin/ocamlc.opt -c -I /Users/viennot/.opam/system/lib/ocamlgraph -g -I src -o src/intDigraph.cmo src/intDigraph.ml
+# Target: src/component.cmo, tags: { byte, compile, debug, extension:cmo, extension:ml, file:src/component.cmo, file:src/component.ml, implem, inline(20), ocaml, quiet, traverse }
+/opt/local/bin/ocamlc.opt -c -I /Users/viennot/.opam/system/lib/ocamlgraph -g -I src -o src/component.cmo src/component.ml
+# Target: src/traversal.cmo, tags: { byte, compile, debug, extension:cmo, extension:ml, file:src/traversal.cmo, file:src/traversal.ml, implem, inline(20), ocaml, quiet, traverse }
+/opt/local/bin/ocamlc.opt -c -I /Users/viennot/.opam/system/lib/ocamlgraph -g -I src -o src/traversal.cmo src/traversal.ml
+# Target: src/unit.cmo, tags: { byte, compile, debug, extension:cmo, extension:ml, file:src/unit.cmo, file:src/unit.ml, implem, inline(20), ocaml, quiet, traverse }
+/opt/local/bin/ocamlc.opt -c -I /Users/viennot/.opam/system/lib/ocamlgraph -g -I src -o src/unit.cmo src/unit.ml
+# Target: src/debug.cmx, tags: { compile, debug, extension:cmx, extension:ml, file:src/debug.cmx, file:src/debug.ml, implem, inline(20), native, ocaml, quiet, traverse }
+/opt/local/bin/ocamlopt.opt -c -I /Users/viennot/.opam/system/lib/ocamlgraph -g -inline 20 -I src -o src/debug.cmx src/debug.ml
+# Target: src/basicLexer.cmx, tags: { compile, debug, extension:cmx, extension:ml, file:src/basicLexer.cmx, file:src/basicLexer.ml, implem, inline(20), native, ocaml, quiet, traverse }
+/opt/local/bin/ocamlopt.opt -c -I /Users/viennot/.opam/system/lib/ocamlgraph -g -inline 20 -I src -o src/basicLexer.cmx src/basicLexer.ml
+# Target: src/graphIO.cmx, tags: { compile, debug, extension:cmx, extension:ml, file:src/graphIO.cmx, file:src/graphIO.ml, implem, inline(20), native, ocaml, quiet, traverse }
+/opt/local/bin/ocamlopt.opt -c -I /Users/viennot/.opam/system/lib/ocamlgraph -g -inline 20 -I src -o src/graphIO.cmx src/graphIO.ml
+# Target: src/indexGraph.cmx, tags: { compile, debug, extension:cmx, extension:ml, file:src/indexGraph.cmx, file:src/indexGraph.ml, implem, inline(20), native, ocaml, quiet, traverse }
+/opt/local/bin/ocamlopt.opt -c -I /Users/viennot/.opam/system/lib/ocamlgraph -g -inline 20 -I src -o src/indexGraph.cmx src/indexGraph.ml
+# Target: src/vector.cmx, tags: { compile, debug, extension:cmx, extension:ml, file:src/vector.cmx, file:src/vector.ml, implem, inline(20), native, ocaml, quiet, traverse }
+/opt/local/bin/ocamlopt.opt -c -I /Users/viennot/.opam/system/lib/ocamlgraph -g -inline 20 -I src -o src/vector.cmx src/vector.ml
+# Target: src/intDigraph.cmx, tags: { compile, debug, extension:cmx, extension:ml, file:src/intDigraph.cmx, file:src/intDigraph.ml, implem, inline(20), native, ocaml, quiet, traverse }
+/opt/local/bin/ocamlopt.opt -c -I /Users/viennot/.opam/system/lib/ocamlgraph -g -inline 20 -I src -o src/intDigraph.cmx src/intDigraph.ml
+# Target: src/component.cmx, tags: { compile, debug, extension:cmx, extension:ml, file:src/component.cmx, file:src/component.ml, implem, inline(20), native, ocaml, quiet, traverse }
+/opt/local/bin/ocamlopt.opt -c -I /Users/viennot/.opam/system/lib/ocamlgraph -g -inline 20 -I src -o src/component.cmx src/component.ml
+# Target: src/traversal.cmx, tags: { compile, debug, extension:cmx, extension:ml, file:src/traversal.cmx, file:src/traversal.ml, implem, inline(20), native, ocaml, quiet, traverse }
+/opt/local/bin/ocamlopt.opt -c -I /Users/viennot/.opam/system/lib/ocamlgraph -g -inline 20 -I src -o src/traversal.cmx src/traversal.ml
+# Target: src/unit.cmx, tags: { compile, debug, extension:cmx, extension:ml, file:src/unit.cmx, file:src/unit.ml, implem, inline(20), native, ocaml, quiet, traverse }
+/opt/local/bin/ocamlopt.opt -c -I /Users/viennot/.opam/system/lib/ocamlgraph -g -inline 20 -I src -o src/unit.cmx src/unit.ml
+# Target: src/unit.native, tags: { debug, dont_link_with, extension:native, file:src/unit.native, inline(20), link, native, ocaml, program, quiet, traverse }
+/opt/local/bin/ocamlopt.opt bigarray.cmxa str.cmxa unix.cmxa -I /Users/viennot/.opam/system/lib/ocamlgraph graph.cmxa -g src/basicLexer.cmx src/debug.cmx src/graphIO.cmx src/indexGraph.cmx src/vector.cmx src/component.cmx src/intDigraph.cmx src/traversal.cmx src/unit.cmx -o src/unit.native
 # Compilation successful.
