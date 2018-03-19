@@ -62,6 +62,12 @@ int main (int argc, char **argv) {
     trav.dijkstra(g, u);
     std::cerr << trav.nvis() <<" nodes visited\n";
     std::cerr << "dist "<< u <<" to "<< v <<" = "<< trav.dist(v) <<  std::endl;
+
+    std::cerr << "rev path:";
+    for (; v != u; v = trav.parent(v)) {
+        std::cerr <<" "<< v;
+    }
+    std::cerr <<" "<< u <<"\n";
     t = top (t, "dijkstra");
 
 }
