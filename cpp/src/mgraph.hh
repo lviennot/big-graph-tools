@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <vector>
 #include <utility>
+#include <functional>
 
 #include "edge.hh"
 
@@ -36,6 +37,7 @@ class mgraph {
 public:
     typedef int V;
     static const V not_vertex = -1;
+    typedef V vertex;
     typedef W weight;
     typedef edge::dst_wgt<V,W> edge_head;  // A dst,wgt pair.
     

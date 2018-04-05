@@ -7,6 +7,8 @@
 #include <vector>
 #include <queue>          // std::priority_queue
 #include <algorithm>      // std::min
+#include <functional>
+#include <unordered_map>
 
 #include "mgraph.hh"
 
@@ -48,8 +50,9 @@ private:
                         > queue_;
     std::vector<V> visit_;
     std::vector<bool> visited_, in_scc_stack_;
+    std::vector<int> visited_at_;
     std::vector<int> lowlink_, visit_end_; // for DFS
-    std::vector<V> parent_;
+    std::vector<V> parent_; 
     std::vector<WL> dist_, tree_ecc_; // for Dijkstra and BFS
     
     std::vector<int> size_; // for tree centroid, and component sizes
@@ -62,8 +65,8 @@ public:
 
     // Handle graphs with vertices in [0..n-1].
     traversal (int n)
-        : queue_(wl_head_further, q_vec_), dist_(n, max_weight),
-          visit_(n), visited_(n, false),
+        : q_vec_(), queue_(wl_head_further, q_vec_), dist_(n, max_weight),
+          visit_(n), visited_(n, false), visited_at_(n, n),
           size_(n, 0), parent_(n, n), n_(n), nvis_(0),
           in_scc_stack_(n, false), lowlink_(n, n), visit_end_(n, n),
           tree_ecc_(n, zero_weight)
@@ -75,6 +78,7 @@ public:
     int nvis() const { return nvis_; }
     V visit(int i) const { assert(i < nvis_); return visit_[i]; }
     bool visited(V u) { return visited_[u]; }
+    int visited_at(V u) { return visited_at_[u]; }
     V parent(V u) const { return parent_[u]; }
     WL dist(V u) const { return dist_[u]; }
     const std::vector<WL>& distances() const { return dist_; }
@@ -82,13 +86,86 @@ public:
     WL tree_ecc(V u) const { return tree_ecc_[u]; }
     V first_visited (int i_start = 0) const { return visit_[i_start]; }
     V last_visited () const { return visit_[nvis_ - 1]; }
+
+    typedef typename G::edge edge;
     
+    G graph() const {
+        int n = nvis_;
+        std::vector<edge> edg;
+        edg.reserve(2*n);
+        for (int i = 0; i < n; ++i) {
+            V u = visit_[i];
+            int p = visited_at_[parent_[u]];
+            edg.push_back(edge(i, p, dist_[u] - dist_[p]));
+            edg.push_back(edge(p, i, dist_[u] - dist_[p]));
+        }
+        return G(n, edg);
+    }
+
+    G digraph_to_sons() const {
+        int n = nvis_;
+        std::vector<edge> edg;
+        edg.reserve(n);
+        for (int i = 1; i < n; ++i) {
+            V u = visit_[i];
+            int p = visited_at_[parent_[u]];
+            edg.push_back(edge(p, i, dist_[u] - dist_[p]));
+        }
+        return G(n, edg);
+    }
+
+
+    struct tree_node { // for compact representation of a tree
+        int vtx; // associated vertex in the graph (of the tree of the node)
+        int parent; // visit number of the parent
+        //WL dist; // distance from root to vtx
+        //WL dist_max; // distance from root of furthest descendant of vtx
+        int size; // number of nodes in subtree
+        tree_node()
+            : vtx(-1), parent(-1), //dist(0), dist_max(zero_weight),
+              size(0) {}
+    };
+
+    typedef tree_node node;
+
+    std::vector<node> digraph_nodes() const { // node i cooresponds to visit_[i]
+        std::vector<node> nds(nvis_);
+        for (int i = nvis_ - 1; i >= 0; --i) {
+            V u = visit_[i];
+            nds[i].vtx = u;
+            int p = visited_at_[parent_[u]];
+            nds[i].parent = p;
+            //nds[i].dist = dist_[u];
+            //nds[i].dist_max = std::max(nds[i].dist_max, dist_[u]);
+            nds[i].size += 1;
+            if (p != i) {
+                //nds[p].dist_max = std::max(nds[p].dist_max, nds[i].dist_max);
+                nds[p].size += nds[i].size;
+            }
+        }
+        return nds;
+    }
+
+    
+    typedef std::unordered_map<V,int> index;
+    
+    index digraph_index() const {
+        index idx;
+        for (int i = 0; i < nvis_; ++i) {
+            V u = visit_[i];
+            idx[u] = i;
+        }
+        return idx;
+    }
+
+
     void clear(WL dft_wgt = max_weight, int n = 0) {
         int up_to = std::max(n, nvis_);
         for (int i = 0; i < nvis_; ++i)  {
             V u = visit_[i];
             visit_[i] = not_vertex;
             visited_[u] = false;
+            visited_at_[u] = n_;
             in_scc_stack_[u] = false;
             lowlink_[u] = n_;
             visit_end_[u] = n_;
@@ -124,8 +201,10 @@ public:
             WL du = u_du.wgt;
             V u = u_du.dst;
             if ( ! visited_[u]) {
-                visit_[nvis_++] = u;
+                int i_vis = nvis_++;
+                visit_[i_vis] = u;
                 visited_[u] = true;
+                visited_at_[u] = i_vis;
                 WL dv = du + step_weight;
                 for (V v : g[u]) {
                     if (dist_[v] == max_weight && filtr(v, dv, u, du)) {
@@ -159,8 +238,10 @@ public:
             V u = u_du.dst;
             queue_.pop();
             if (du == dist_[u] && ! visited_[u]) {
-                visit_[nvis_++] = u;
+                int i_vis = nvis_++;
+                visit_[i_vis] = u;
                 visited_[u] = true;
+                visited_at_[u] = i_vis;
                 for (auto e : g[u]) {
                     WL dv = du + e.wgt;
                     V v = e.dst;
@@ -192,8 +273,10 @@ public:
             V u = u_dut.dst;
             queue_.pop();
             if (d_ut == dist_[u] + dist_to_t_lb(u) && ! visited_[u]) {
-                visit_[nvis_++] = u;
+                int i_vis = nvis_++;
+                visit_[i_vis] = u;
                 visited_[u] = true;
+                visited_at_[u] = i_vis;
                 if (u == t) { break; }
                 for (auto e : g[u]) {
                     WL dv = dist_[u] + e.wgt;
@@ -216,6 +299,7 @@ public:
             V u = visit_[i];
             visit_[i] = not_vertex;
             visited_[u] = false;
+            visited_at_[u] = n_;
             lowlink_[u] = n_;
             visit_end_[u] = n_;
             dist_[u] = dft_wgt;
@@ -254,9 +338,11 @@ public:
              * avoid allocating one more array).
              */
             if ( ! visited_[u]) { // begin visit of [u]
-                lowlink_[u] = nvis_;
-                visit_[nvis_++] = u;
+                int i_vis = nvis_++;
+                visit_[i_vis] = u;
                 visited_[u] = true;
+                visited_at_[u] = i_vis;
+                lowlink_[u] = i_vis;
                 if (opt == SCC) {
                     scc_stack_.push_back(u);
                     in_scc_stack_[u] = true;
@@ -392,8 +478,10 @@ public:
             V u = u_du.dst;
             queue_.pop();
             if (nb_neighb_vis == dist_[u] && ! visited_[u]) {
-                visit_[nvis_++] = u;
+                int i_vis = nvis_++;
+                visit_[i_vis] = u;
                 visited_[u] = true;
+                visited_at_[u] = i_vis;
                 for (V v : g[u]) {
                     if ( (! visited_[v]) && filtr(v, u)) {
                         dist_[v] = std::min(dist_[v], nvis_max) - 1;
@@ -404,6 +492,7 @@ public:
         }
         return nvis_ - nvis0;
     }
+
 
     // Asserts that the graph is a tree (with symmetric links).
     int tree_size(const G &g, int root,

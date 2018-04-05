@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <vector>
 #include <queue>          // std::priority_queue
+#include <functional>
 
 
 template<typename T, // Traversal.

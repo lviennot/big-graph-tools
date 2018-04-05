@@ -7,6 +7,7 @@
 #include <xmmintrin.h> // prefetch
 
 #include "edge.hh"
+#include "traversal.hh"
 
 template<typename G,
          typename WL = int64_t, // long weights
@@ -34,9 +35,12 @@ private:
     int n_; // number of nodes
     std::vector<label_t> index_;
 
+    int i_hub; // next hub number
+    int64_t sum_nvis, last_nvis, last_r; // stats for progress
+
 
 public:
-    pruned_landmark_labeling() : n_(0) {}
+    pruned_landmark_labeling() : n_(0), i_hub(0) {}
 
     inline WL distance(int u, int v) {
         const label_t &lab_u = index_[u];
@@ -81,8 +85,9 @@ public:
     }
 
     pruned_landmark_labeling(const G &g,
-                    std::vector<V> rank_order = std::vector<int>()) {
-        construct_index(g, rank_order);
+                             const std::vector<V> &rank_order,
+                             bool wgted = true) {
+        construct_index2(g, rank_order, wgted);
     }
 
     void construct_index(const G &g, std::vector<V> rank_order) {
@@ -126,7 +131,7 @@ public:
         {
             traversal<G, WL, max_weight, zero_weight> trav(n_);
             
-            int64_t sum_nvis = 0, last_nvis = 0, last_r = -1;
+            sum_nvis = 0; last_nvis = 0; last_r = -1;
             
             // Visit by rank order:
             for (int r = 0; r < n_; ++r) {
@@ -193,6 +198,99 @@ public:
             std::cerr << "\n"; std::cerr.flush();
             
         } // Pruned labeling
+    }
+
+
+    void init_index(int n) {
+        // Number of vertices
+        n_ = n;
+        i_hub = 0;
+        sum_nvis = 0; last_nvis = 0; last_r = -1;
+
+        // Allocate index
+        index_ = std::vector<label_t>(n_);
+        for (int u = 0; u < n_; ++u) {
+            label_t &lab_u = index_[u];
+            lab_u.in_v.push_back(n_);
+            lab_u.in_d.push_back(max_weight);
+            lab_u.out_v.push_back(n_);
+            lab_u.out_d.push_back(max_weight);
+        }
+    }
+
+    typedef traversal<G, WL, max_weight, zero_weight> trav_G;
+
+    void forward(const G &g, V u, trav_G &trav,
+                 bool wgted, bool add_hub=false) {
+        auto filter = [this, u](V v, WL dv, V prt, WL dprt){
+            return dv < distance(u, v);
+        };
+        trav.clear();
+        if (wgted) trav.dijkstra(g, u, filter);
+        else trav.bfs(g, u, filter);
+        if (add_hub) {
+            sum_nvis += trav.nvis(); last_nvis += trav.nvis();
+            for (int i = trav.nvis() - 1; i >= 0; --i) {
+                int v = trav.visit(i);
+                label_t &lab_v = index_[v];
+                lab_v.in_v.back() = i_hub;
+                lab_v.in_d.back() = trav.dist(v);
+                lab_v.in_v.push_back(n_);
+                lab_v.in_d.push_back(max_weight);
+            }
+        }
+    }
+    
+    void backward(const G &g_rev, V u, trav_G &trav,
+                  bool wgted, bool add_hub=false) {
+        auto filter = [this, u](V v, WL dv, V prt, WL dprt){
+            return dv < distance(v, u);
+        };
+        trav.clear();
+        if (wgted) trav.dijkstra(g_rev, u, filter);
+        else trav.bfs(g_rev, u, filter);
+        if (add_hub) {
+            sum_nvis += trav.nvis(); last_nvis += trav.nvis();
+            for (int i = trav.nvis() - 1; i >= 0; --i) {
+                int v = trav.visit(i);
+                label_t &lab_v = index_[v];
+                lab_v.out_v.back() = i_hub;
+                lab_v.out_d.back() = trav.dist(v);
+                lab_v.out_v.push_back(n_);
+                lab_v.out_d.push_back(max_weight);
+            }
+        }
+    }
+
+    void progress(int r, bool force = false) {
+        if ((force && r > last_r)
+            || r <= 10 || (r <= 100 && r % 10 == 0) || r % 100 == 0) {
+            std::cerr << r  << " avg_nvis="<< (sum_nvis / (2*(r+1)))
+                      <<" lst_nvis="<< (last_nvis / 2 / (r - last_r))
+                      << " n=" << n_ <<" "
+                      << "avg_hs=" << (sum_nvis / (2*n_))
+                      << " (" << (sum_nvis * 12 / 1000000) <<"m)"
+                      <<"         \r";
+            std::cerr.flush();
+            last_r = r;
+            last_nvis = 0;
+        }
+    }
+
+    void incr_i_hub() { ++i_hub; }
+    
+    void construct_index2(const G &g, std::vector<V> rank_order, bool wgted) {
+        init_index(g.n());
+        assert(n_ == rank_order.size());
+        G g_rev = g.reverse();
+        trav_G trav(n_);
+        for ( ; i_hub < n_; ++i_hub) {
+            V u = rank_order[i_hub];
+            forward(g, u, trav, wgted, true);
+            backward(g_rev, u, trav, wgted, true);
+            progress(i_hub);
+        }
+        std::cerr << "\n";
     }
     
 };
