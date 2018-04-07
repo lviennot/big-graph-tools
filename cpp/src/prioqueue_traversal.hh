@@ -10,7 +10,6 @@
 #include <functional>
 #include <unordered_map>
 
-#include "heap.hh"
 #include "mgraph.hh"
 
 /**
@@ -37,15 +36,25 @@ public:
     typedef typename G::weight W;
     typedef WL long_weight;
 private:
+    typedef edge::dst_wgt<V,WL> wl_head;
     
-    std::vector<V> q_vec_, scc_stack_;
+    static inline bool wl_head_further (const wl_head &u, const wl_head &v) {
+        return u.wgt > v.wgt;
+    }
+
+    std::vector<wl_head> q_vec_;
+    std::vector<V> q_v_, scc_stack_;
+    std::priority_queue<wl_head,
+                        std::vector<wl_head>,
+                        std::function<bool(const wl_head &, const wl_head &)>
+                        > queue_;
     std::vector<V> visit_;
     std::vector<bool> visited_, in_scc_stack_;
     std::vector<int> visited_at_;
     std::vector<int> lowlink_, visit_end_; // for DFS
     std::vector<V> parent_; 
     std::vector<WL> dist_, tree_ecc_; // for Dijkstra and BFS
-    heap queue_;
+    
     std::vector<int> size_; // for tree centroid, and component sizes
     
     int n_, nvis_;
@@ -56,14 +65,13 @@ public:
 
     // Handle graphs with vertices in [0..n-1].
     traversal (int n)
-        : dist_(n, max_weight),
-          queue_([this](V u, V v){ return dist_[u] < dist_[v]; }, n), 
+        : q_vec_(), queue_(wl_head_further, q_vec_), dist_(n, max_weight),
           visit_(n), visited_(n, false), visited_at_(n, n),
           size_(n, 0), parent_(n, n), n_(n), nvis_(0),
           in_scc_stack_(n, false), lowlink_(n, n), visit_end_(n, n),
           tree_ecc_(n, zero_weight)
     {
-        q_vec_.reserve(n_);
+        q_vec_.reserve(n_); q_v_.reserve(n_);
     }
 
     int n() const { return n_; }
@@ -166,6 +174,7 @@ public:
             size_[u] = 0;
             tree_ecc_[u] = zero_weight;
         }
+        q_vec_.clear();
         scc_stack_.clear();
         nvis_ = 0;
     }
@@ -184,12 +193,13 @@ public:
         for (int s : more_sources) {
             dist_[s] = zero_weight;
             parent_[s] = s;
-            q_vec_[tail++] = s;
+            q_vec_[tail++] = wl_head(s, zero_weight);
         }
 
         while (head < tail) {
-            V u = q_vec_[head++];
-            WL du = dist_[u];
+            const wl_head &u_du = q_vec_[head++];
+            WL du = u_du.wgt;
+            V u = u_du.dst;
             if ( ! visited_[u]) {
                 int i_vis = nvis_++;
                 visit_[i_vis] = u;
@@ -200,7 +210,7 @@ public:
                     if (dist_[v] == max_weight && filtr(v, dv, u, du)) {
                         dist_[v] = dv;
                         parent_[v] = u;
-                        q_vec_[tail++] = v;
+                        q_vec_[tail++] = wl_head(v, dv);
                     }
                 }
             }
@@ -214,20 +224,20 @@ public:
                   = [](V v, WL d, V p, WL dp) { return true; },
                   std::vector<V> more_sources = {}) {
         assert(g.n() <= n_);
-        queue_.clear();
-        queue_.set_compare([this](V u, V v){ return dist_[u] < dist_[v]; });
         int nvis0 = nvis_;
         more_sources.push_back(s);
         for (int s : more_sources) {
             dist_[s] = zero_weight;
             parent_[s] = s;
-            queue_.push(s);
+            queue_.push(wl_head(s, zero_weight));
         }
             
         while ( ! queue_.empty()) {
-            V u = queue_.pop();
-            WL du = dist_[u];
-            if (! visited_[u]) {
+            const wl_head &u_du = queue_.top();
+            WL du = u_du.wgt;
+            V u = u_du.dst;
+            queue_.pop();
+            if (du == dist_[u] && ! visited_[u]) {
                 int i_vis = nvis_++;
                 visit_[i_vis] = u;
                 visited_[u] = true;
@@ -238,7 +248,7 @@ public:
                     if((! visited_[v]) && dv < dist_[v] && filtr(v, dv, u, du)){
                         dist_[v] = dv;
                         parent_[v] = u;
-                        queue_.push(v);
+                        queue_.push(wl_head(v, dv));
                     }
                 }
             }
@@ -252,18 +262,17 @@ public:
                 std::function<bool(V, WL, V, WL)> filtr
                 = [](V v, WL d, V p, WL dp) { return true; }) {
         assert(g.n() <= n_);
-        queue_.clear();
-        queue_.set_compare([this, dist_to_t_lb](V u, V v){
-                return dist_[u] + dist_to_t_lb(u) < dist_[v] + dist_to_t_lb(v);
-            });
         int nvis0 = nvis_;
         dist_[s] = zero_weight;
         parent_[s] = s;
-        queue_.push(s);
+        queue_.push(wl_head(s, dist_to_t_lb(s)));
 
         while ( ! queue_.empty()) {
-            V u = queue_.pop();
-            if (! visited_[u]) {
+            const wl_head &u_dut = queue_.top();
+            WL d_ut = u_dut.wgt;
+            V u = u_dut.dst;
+            queue_.pop();
+            if (d_ut == dist_[u] + dist_to_t_lb(u) && ! visited_[u]) {
                 int i_vis = nvis_++;
                 visit_[i_vis] = u;
                 visited_[u] = true;
@@ -276,7 +285,7 @@ public:
                        && filtr(v, dv, u, dist_[u])){
                         dist_[v] = dv;
                         parent_[v] = u;
-                        queue_.push(v);
+                        queue_.push(wl_head(v, dv + dist_to_t_lb(v)));
                     }
                 }
             }
@@ -302,6 +311,7 @@ public:
                 parent_[v] = not_vertex;
             }
         }
+        q_vec_.clear();
         nvis_ = 0;
     }
 
@@ -312,10 +322,10 @@ public:
         int nvis0 = nvis_, vis_end = nvis_;
         parent_[s] = s;
         int tail = 0;
-        q_vec_[tail++] = s;
+        q_v_[tail++] = s;
 
         while (tail > 0) {
-            V u = q_vec_[--tail];
+            V u = q_v_[--tail];
             /* lowlink_[u] (see Tarjan alg. for strongly connected components)
              * is the smallest visit number of a node accessible from u through
              * a sequence of forward edges plus eventually one backward edge. 
@@ -339,15 +349,15 @@ public:
                 }
                 
                 // add u to stack for detecting end of visit when popped again
-                if (tail >= q_vec_.size()) q_vec_.push_back(not_vertex);
-                q_vec_[tail++] = u;
+                if (tail >= q_v_.size()) q_v_.push_back(not_vertex);
+                q_v_[tail++] = u;
                 
                 for (V v : g[u]) {
                     if ( ! visited_[v]) {
                         // possible forward edge
                         parent_[v] = u; // possibly overwritten
-                        if (tail >= q_vec_.size()) q_vec_.push_back(not_vertex);
-                        q_vec_[tail++] = v;
+                        if (tail >= q_v_.size()) q_v_.push_back(not_vertex);
+                        q_v_[tail++] = v;
                     } else if (visited_[v]) {
                         // backward edge
                         if (opt == SCC && in_scc_stack_[v]) {
@@ -455,25 +465,27 @@ public:
                  std::function<bool(V, V)> filtr
                  = [](V v, V p) { return true; }) {
         assert(g.n() <= n_);
-        queue_.clear();
-        // number of visited neighbors of u is stored in dist_[u]
-        queue_.set_compare([this](V u, V v){ return dist_[u] > dist_[v]; });
         int nvis0 = nvis_;
-        dist_[s] = 0;
+        const WL nvis_max = n_;
+        dist_[s] = nvis_max;
+        // dist_[u] will contain nvis_max - (nb of visited neigh)
         parent_[s] = s;
-        queue_.push(s);
+        queue_.push(wl_head(s, dist_[s]));
 
         while ( ! queue_.empty()) {
-            V u = queue_.pop();
-            if (! visited_[u]) {
+            const wl_head &u_du = queue_.top();
+            WL nb_neighb_vis = u_du.wgt;
+            V u = u_du.dst;
+            queue_.pop();
+            if (nb_neighb_vis == dist_[u] && ! visited_[u]) {
                 int i_vis = nvis_++;
                 visit_[i_vis] = u;
                 visited_[u] = true;
                 visited_at_[u] = i_vis;
                 for (V v : g[u]) {
                     if ( (! visited_[v]) && filtr(v, u)) {
-                        dist_[v] += 1;
-                        queue_.push(v);
+                        dist_[v] = std::min(dist_[v], nvis_max) - 1;
+                        queue_.push(wl_head(v, dist_[v]));
                     }
                 }
             }
