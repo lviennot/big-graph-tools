@@ -23,7 +23,7 @@ double top (double t1, std::string msg) {
 void usage_exit (char **argv) {
     std::cerr <<"Usage: "<< argv[0] <<" [command] [graph] [OPT [subset]]\n"
         "Computes a hub labeling of the graph G in file [graph] and\n"
-        " outputs labels of selected nodes listed in the optional\n"
+        "outputs labels of selected nodes listed in the optional\n"
         "file [subset] (all nodes if no file is specified).\n"
         "With command 'out-hubs' (resp. 'in-hubs'), it outputs the list\n"
         "of arcs from selected nodes to their out-hubs (resp. from\n"
@@ -32,12 +32,12 @@ void usage_exit (char **argv) {
         "following one arc of the 'out-hubs' list and one arc of the\n"
         "'in-hubs' list provides the subgrap G* induced by selected nodes\n"
         "in the transitive closure of G.\n"
-        "Command 'trans' computes G* and outputs its arcs.\n"
+        "Command 'closure' computes G* and outputs its arcs.\n"
         "A '-' for [graph] or [subset] stands for standard input.\n"
-        "  Graph format: one arc [src_id] [dst_id] [wgt] per line\n"
+        "  Graph format: one arc [src_id] [dst_id] [length] per line\n"
         "  Subset format: one node [id] per line.\n"
-        "  Command format: [in-hubs] [out-hubs] [transitive]\n"
-        "  Output format: arcs [node id] [hub/node id] [weight].\n";
+        "  Command format: 'in-hubs' or 'out-hubs' or 'closure'\n"
+        "  Output format: arcs [node id] [hub/node id] [length].\n";
         exit(1);
 }
 
@@ -109,7 +109,7 @@ int main (int argc, char **argv) {
         edg = hl.out_hub_edges(is_sel, is_sel);
     } else if (cmd == "in-hubs") {
         edg = hl.in_hub_edges(is_sel, is_sel);
-    } else if (cmd == "trans") {
+    } else if (cmd == "closure") {
         std::vector<graph::edge> edg_out = hl.out_hub_edges(is_sel, is_sel);
         std::vector<graph::edge> edg_in = hl.in_hub_edges(is_sel, is_sel);
         edg.reserve(n_sel * n_sel);
