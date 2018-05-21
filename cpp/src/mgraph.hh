@@ -65,7 +65,13 @@ public:
         init_from_edges(n, edg);
     }
     
-    mgraph(const std::vector<edge> &edg) {
+    mgraph(const std::vector<edge> &edg) : sdeg(nullptr), adj(nullptr) {
+        set_edges(edg);
+    }
+
+    void set_edges(const std::vector<edge> &edg) {
+        if (sdeg != nullptr) delete[] sdeg;
+        if (adj != nullptr) delete[] adj;
         V n = 0;
         for (auto const e : edg)
             n = std::max(n, std::max(e.src, e.dst) + 1);
@@ -84,7 +90,7 @@ public:
         o.m_ = 0;
     }
     
-    mgraph(mgraph& o) : n_(0), m_(0), sdeg(nullptr), adj(nullptr) {
+    mgraph(const mgraph& o) : n_(0), m_(0), sdeg(nullptr), adj(nullptr) {
         sdeg = new size_t[o.n_+1];
         adj = new edge_head[o.m_];
         std::copy(o.sdeg, o.sdeg + o.n_ + 1, sdeg);
@@ -164,10 +170,44 @@ public:
         size_t i = 0;
         for (V u = 0; u < n_; ++u) {
             for (size_t e = sdeg[u]; e < sdeg[u+1]; ++e) {
-                edg[i++] = edge(adj[e].src, adj[e].dst, adj[e].wgt);
+                edg[i++] = edge(u, adj[e].dst, adj[e].wgt);
             }
         }
         return edg;
+    }
+
+    std::pair<mgraph<W>, std::vector<V> >
+    subgraph(std::function<bool(V)> is_in, const std::vector<V> &vtx = {})
+        const {
+        bool use_vtx = vtx.size() > 0;
+        if (use_vtx) assert(vtx.size() == n_);
+
+        const V not_vertex = -1;
+        std::vector<V> vtx_sub, vtx_inv(n_, not_vertex);
+        V n_sub = 0;
+        for (V u = 0; u < n_; ++u) { if (is_in(u)) ++n_sub; }
+        vtx_sub.reserve(n_sub);
+        for (V u = 0; u < n_; ++u) {
+            if (is_in(u)) {
+                vtx_inv[u] = vtx_sub.size();
+                vtx_sub.push_back(use_vtx ? vtx[u] : u);
+            }
+        }
+        
+        std::vector<edge> edg;
+        for (V u = 0; u < n_; ++u) {
+            if (is_in(u)) {
+                for (size_t e = sdeg[u]; e < sdeg[u+1]; ++e) {
+                    V v = adj[e].dst;
+                    if (is_in(v)) {
+                        edg.push_back(edge(vtx_inv[u], vtx_inv[v], adj[e].wgt));
+                    }
+                }
+            }
+        }
+
+        return std::pair<mgraph<W>, std::vector<V> >(mgraph(n_sub, edg),
+                                                     vtx_sub);
     }
 
     
@@ -280,6 +320,67 @@ private:
 }; // mgraph
 
 
+namespace unit {
+
+    typedef mgraph<int> graph;
+    
+    void mgraph_test(int n, int deg) {
+        std::vector<graph::edge> edg;
+        for (int u = 0; u < n; ++u) {
+            for (int d = 0; d < deg; ++d) {
+                edg.push_back(graph::edge(u, rand() % n, 1));
+            }
+        }
+        std::cerr << "mgraph_test: ";
+        graph g(n, edg);
+        for (int u : g) {
+            for (int v : g[u]) std::cerr << u <<","<< v <<" ";
+        }
+        std::cerr << "\n";
+
+        // subgraph:
+        auto sub = g.subgraph([](int u) { return u % 2 ==0; });
+        graph h = sub.first;
+        std::vector<int> vtx = sub.second;
+        std::cerr << "mgraph_test: ";
+        for (int u : h) {
+            for (int v : h[u]) std::cerr << vtx[u] <<","<< vtx[v] <<" ";
+        }
+        std::cerr << "\n";
+        g = g.reverse().reverse();
+        int hm = 0;
+        for (int u : g) {
+            for (int v : g[u])
+                if (u % 2 == 0 && v % 2 == 0) ++hm;
+        }
+        assert(h.m() == hm);
+        for (int u : h) {
+            for (int v : h[u])
+                assert(g.has_edge(vtx[u], vtx[v]));
+        }
+
+        // subgraph of subgraph:
+        sub = h.subgraph([&vtx](int u) { return vtx[u] % 4 == 0; }, vtx);
+        h = sub.first;
+        vtx = sub.second;
+        std::cerr << "mgraph_test: ";
+        for (int u : h) {
+            for (int v : h[u]) std::cerr << vtx[u] <<","<< vtx[v] <<" ";
+        }
+        std::cerr << "\n";
+        hm = 0;
+        for (int u : g) {
+            for (int v : g[u])
+                if (u % 4 == 0 && v % 4 == 0) ++hm;
+        }
+        assert(h.m() == hm);
+        for (int u : h) {
+            for (int v : h[u])
+                assert(g.has_edge(vtx[u], vtx[v]));
+        }
+    }
+    
+}
     
 
 

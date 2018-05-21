@@ -1,0 +1,28 @@
+HDRS:=$(wildcard src/*.hh)
+#$(addprefix src/, edge.hh mgraph.hh)
+#dyn_graph.hh traversal.hh eccentricity.hh graphgen.hh treedec.hh pruned_landmark_labeling.hh skeleton.hh verbose.hh)
+
+main: test
+	gunzip -c ex/corse-osm-t.gr.gz | ./test
+
+switzerland: test
+	gunzip -c ex/switzerland.gr.gz | ./test - ex/switzerland.stops
+
+unit: src/unit.cc $(HDRS)
+	g++ -std=c++11 -O3 -g -rdynamic -pthread -o $@ $<
+	./unit
+
+test: src/test.cc $(HDRS)
+	g++ -std=c++11 -O3 -g -rdynamic -pthread -o $@ $<
+
+headers:
+	@echo $(HDRS)
+
+clean:
+	rm -f test *~ src/*~
+	rm -fr test.dSYM
+
+%.rioc: test
+	scp -r Makefile src rioc.inria.fr:graph/cpp/
+	ssh rioc.inria.fr 'cd graph/cpp; oarsub -p mem\>=40 -l nodes=1/core=1,walltime=24:00:00 "make $*"; sleep 5; cat OAR.*.stdout'
+

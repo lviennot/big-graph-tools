@@ -1,13 +1,14 @@
+#include <cstdlib>
 #include <sys/time.h>
 #include <vector>
 #include <unordered_map>
 #include <iostream>
+#include <string>
 
 #include "mgraph.hh"
 #include "traversal.hh"
 #include "skeleton.hh"
 #include "pruned_landmark_labeling.hh"
-#include "hub_labeling.hh"
 
 typedef mgraph<int> graph;
 
@@ -20,16 +21,19 @@ double top (double t1, std::string msg) {
     return t2;
 }
 
+
 int main (int argc, char **argv) {
     double t = top (0., "start");
-    
+
     // ------------------------- load ----------------------
     std::vector<graph::edge> edg;
     std::unordered_map<std::string,int> vi; // vertex index
     std::vector<std::string> lab;
     size_t n = 0;
     {
-        FILE *in = (argc > 1) ? fopen(argv[1], "r") : stdin;
+        FILE *in =
+            (argc > 1 && std::string("-") != argv[1]) ? fopen(argv[1], "r")
+            : stdin;
         char u[1024], v[1024];
         long long int w;
         for ( ; fscanf(in, " %s %s %lld \n", u, v, &w) >= 3 ; ) {
@@ -66,6 +70,7 @@ int main (int argc, char **argv) {
     // ------------------------- dijkstra -----------------------
     traversal<graph> trav(n);
     int u = 0, v = n - 1;
+    //int u = vi["1"]-1, v = vi["2"]-1;
     trav.dijkstra(g, u);
     std::cerr << trav.nvis() <<" nodes visited\n";
     std::cerr << "dist "<< u <<" to "<< v <<" = "<< trav.dist(v) <<  std::endl;
@@ -112,7 +117,7 @@ int main (int argc, char **argv) {
     std::vector<int> perm(n);
     for (int i = 0; i < n; ++i) perm[i] = i;
     for (int i = n-1; i > 0; --i) {
-        std::swap(perm[i], perm[rand() % (i+1)]);
+        std::swap(perm[i], perm[std::rand() % (i+1)]);
     }
     pruned_landmark_labeling<mgraph<int> > pll(g, perm);
     pll.print_stats(std::cerr);
@@ -121,24 +126,77 @@ int main (int argc, char **argv) {
     t = top (t, "pruned ll");
     int64_t sd = 0;
     for (int i = 0; i < 1000 * 1000; ++i)
-        sd = std::max(sd, pll.distance(rand() % n, rand() % n));
+        sd = std::max(sd, pll.distance(std::rand() % n, std::rand() % n));
     std::cerr <<"  avg dist: "<< sd / 1000 / 1000 << std::endl;
     t = top (t, "pruned ll 1M req dist");
     }*/
     
     
+    // -------------------------- largest scc ----------------------
+    trav.strongly_connected_components(g);
+    int largest_scc = trav.scc_largest();
+    t = top(t, "scc");
+    
     // ------------------------- hub labeling -----------------------
-    hub_labeling<graph> hl(g);
+    std::vector<int> sel, sel_scc;
+    if (argc > 2) {
+        FILE *in = (std::string("-") != argv[2]) ? fopen(argv[2], "r") : stdin;
+        char u[1024];
+        for ( ; fscanf(in, " %s \n", u) >= 1 ; ) {
+            if (vi[u] != 0) {
+                int v = vi[u] - 1;
+                sel.push_back(v);
+                if (trav.scc_number(v) == largest_scc) sel_scc.push_back(v);
+            }
+        }
+    } else {
+        traversal<graph> trav2(n);
+        int u = trav.scc_node(largest_scc);
+        trav2.dijkstra(g, u);
+        for (int u = 0; u < n; ++u) {
+            if (trav.scc_number(u) == largest_scc
+                && trav2.visited_at(u) <= n/5) {
+                //&&  std::rand() % 2 == 0) {
+                sel.push_back(u);
+                sel_scc.push_back(u);
+            }
+        }
+    }
+    std::vector<bool> is_sel(n, false);
+    for (int v : sel) { is_sel[v] = true; }
+    int n_sel = sel.size(), n_sel_scc = sel_scc.size();
+    std::cerr << "selection : "<< n_sel_scc <<" (scc), "<< n_sel <<" (total)\n";
+    t = top(t, "sel");
+
+    pruned_landmark_labeling<graph> hl(g);// small gain: , sel, sel, 100);
+    hl.print_stats(std::cerr, is_sel, is_sel);
     hl.print_stats(std::cerr);
     std::cerr << "dist "<< u <<" -> "<< v
               << " = " << hl.distance(u, v) <<  std::endl;
     t = top (t, "hub lab");
     int64_t sd = 0;
+    int seed = std::rand();
+    std::srand(seed);
     for (int i = 0; i < 1000 * 1000; ++i)
-        sd = std::max(sd, hl.distance(rand() % n, rand() % n));
-    std::cerr <<"  avg dist: "<< sd / 1000 / 1000 << std::endl;
+        sd = std::max(sd, hl.distance(sel_scc[std::rand() % n_sel_scc],
+                                      sel_scc[std::rand() % n_sel_scc]));
+    std::cerr <<"  max dist: "<< sd << std::endl;
     t = top (t, "hl 1M req dist");
+
+    /* Small gain:
+    hl.restrict(sel, sel);
+    hl.print_stats(std::cerr, is_sel, is_sel);
+    t = top (t, "hub lab restricted");
+    sd = 0;
+    std::srand(seed);
+    for (int i = 0; i < 1000 * 1000; ++i)
+        sd = std::max(sd, hl.distance(sel_scc[std::rand() % n_sel_scc],
+                                      sel_scc[std::rand() % n_sel_scc]));
+    std::cerr <<"  max dist: "<< sd << std::endl;
+    t = top (t, "hlr 1M req dist");
+    */
     
     exit(0);
 
 }
+

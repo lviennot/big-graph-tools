@@ -26,12 +26,15 @@ public:
     inline bool empty() { return elts.size() == 0; }
     inline int size() { return elts.size(); }
     inline int top() { assert(elts.size() > 0); return elts[0]; }
-    void clear() { elts.clear(); pos.clear(); }
+    void clear() {
+        elts.clear();
+        for (int e = 0; e < pos.size(); ++e) pos[e] = not_pos;
+    }
     void set_compare(std::function<bool(const int &, const int &)> cmp) {
         cmp_less = cmp;
     }
     
-    /** Push or update an element: if the [i]th element was not in the queue,
+    /** Push or update an element: if the [e]th element was not in the queue,
      *  add it, otherwise consider its order position according to [cmp_less]
      *  has been updated. */ 
     void push(int e) {
