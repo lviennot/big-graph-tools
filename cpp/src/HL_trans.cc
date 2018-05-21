@@ -43,7 +43,9 @@ void usage_exit (char **argv) {
 
 int main (int argc, char **argv) {
     // ------------------------ usage -------------------------
-    if (argc < 3) {
+    std::string cmd(argc >= 2 ? argv[1] : "");
+    if (argc < 3
+        || (cmd != "out-hubs" && cmd != "in-hubs" && cmd != "closure")) {
         usage_exit(argv);
     }
 
@@ -103,7 +105,6 @@ int main (int argc, char **argv) {
     t = top (t, "hub lab");
 
     // ----------------------------- output ------------------------
-    std::string cmd(argv[1]);
     std::vector<graph::edge> edg; 
     if (cmd == "out-hubs") {
         edg = hl.out_hub_edges(is_sel, is_sel);
