@@ -21,23 +21,39 @@ double top (double t1, std::string msg) {
 }
 
 void usage_exit (char **argv) {
+    auto paragraph = [](std::string s, int width=80) -> std::string {
+        std::string acc;
+        while (s.size() > 0) {
+            int pos = s.size();
+            if (pos > width) pos = s.rfind(' ', width);
+            std::string line = s.substr(0, pos);
+            acc += line + "\n";
+            s = s.substr(pos);
+        }
+        return acc;
+    };
+    
     std::cerr <<"Usage: "<< argv[0] <<" [command] [graph] [OPT [subset]]\n"
-        "Computes a hub labeling of the graph G in file [graph] and\n"
-        "outputs labels of selected nodes listed in the optional\n"
-        "file [subset] (all nodes if no file is specified).\n"
-        "With command 'out-hubs' (resp. 'in-hubs'), it outputs the list\n"
-        "of arcs from selected nodes to their out-hubs (resp. from\n"
-        "in-hubs to selected nodes).\n"
-        "The promise is that gathering transitive arcs obtained by\n"
-        "following one arc of the 'out-hubs' list and one arc of the\n"
-        "'in-hubs' list provides the subgrap G* induced by selected nodes\n"
-        "in the transitive closure of G.\n"
+              << paragraph (
+        "Computes a hub labeling of the graph G in file [graph] and "
+        "outputs labels of selected nodes listed in the optional "
+        "file [subset] (all nodes if no file is specified)." )
+              << paragraph (
+        "With command 'out-hubs' (resp. 'in-hubs'), it outputs the list "
+        "of arcs from selected nodes to their out-hubs (resp. from "
+        "in-hubs to selected nodes)." )
+              << paragraph (
+        "The promise is that gathering transitive arcs obtained by "
+        "following one arc of the 'out-hubs' list and one arc of the "
+        "'in-hubs' list provides the subgrap G* induced by selected nodes "
+        "in the transitive closure of G." )
+              <<
         "Command 'closure' computes G* and outputs its arcs.\n"
         "A '-' for [graph] or [subset] stands for standard input.\n"
-        "  Graph format: one arc [src_id] [dst_id] [length] per line\n"
-        "  Subset format: one node [id] per line.\n"
-        "  Command format: 'in-hubs' or 'out-hubs' or 'closure'\n"
-        "  Output format: arcs [node id] [hub/node id] [length].\n";
+        " Graph format: one arc [src_id] [dst_id] [length] per line\n"
+        " Subset format: one node [id] per line.\n"
+        " Command format: 'in-hubs' or 'out-hubs' or 'closure'\n"
+        " Output format: arcs [node id] [hub/node id] [length].\n";
         exit(1);
 }
 
