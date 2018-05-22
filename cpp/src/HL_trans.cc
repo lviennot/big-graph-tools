@@ -187,9 +187,9 @@ int main (int argc, char **argv) {
         }
         main_log.cerr() << "closure\n";
         for (int i = 0; i < n_sel; ++i) {
-            std::string us = lab[sel[i]];
             for (int j = 0; j < n_sel; ++j) {
-                std::cout << us <<" "<< lab[sel[j]] <<" "<< mat[i][j] <<"\n";
+                std::cout << lab[sel[i]] <<" "<< lab[sel[j]]
+                          <<" "<< mat[i][j] <<"\n";
             }
         }
     } else {
