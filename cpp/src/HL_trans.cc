@@ -8,17 +8,9 @@
 #include "mgraph.hh"
 #include "traversal.hh"
 #include "pruned_landmark_labeling.hh"
+#include "logging.hh"
 
 typedef mgraph<int64_t> graph;
-
-double top (double t1, std::string msg) {
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    double t2 = tv.tv_sec + tv.tv_usec * 1e-6;
-    std::cerr << "-- time " << msg << " : " << (t2 - t1) << "s\n";
-    std::cerr.flush();
-    return t2;
-}
 
 void usage_exit (char **argv) {
     auto paragraph = [](std::string s, int width=80) -> std::string {
@@ -57,7 +49,10 @@ void usage_exit (char **argv) {
         exit(1);
 }
 
+
 int main (int argc, char **argv) {
+    logging main_log("--");
+
     // ------------------------ usage -------------------------
     std::string cmd(argc >= 2 ? argv[1] : "");
     if (argc < 3
@@ -65,9 +60,18 @@ int main (int argc, char **argv) {
         usage_exit(argv);
     }
 
-    
-    double t = top (0., "start");
-    double t_start = t;
+    // ------------------------ time -------------------------
+    auto  top = [](double t1, std::string msg) -> double {
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        double t2 = tv.tv_sec + tv.tv_usec * 1e-6;
+        std::cerr << "-- time " << msg << " : " << (t2 - t1) << "s\n";
+        std::cerr.flush();
+        return t2;
+    };
+
+    main_log.cerr() << "start\n";
+    double t = main_log.lap();
 
     // ------------------------- load graph ----------------------
     std::unordered_map<std::string,int> vi; // vertex index
@@ -84,14 +88,18 @@ int main (int argc, char **argv) {
             if (vi[v] == 0) { lab.push_back(v); vi[v] = 1+n++; }
             edg.push_back(graph::edge(vi[u]-1, vi[v]-1, w));
             //if(symmetrize) edg.push_back(graph::edge(vi[v]-1, vi[u]-1, w));
+            if (main_log.progress()) {
+                main_log.cerr(t) << "read "<< edg.size() << " edges\n";
+            }
         }
         // graph
         g.set_edges(edg);
     }
     assert(n == g.n());
     size_t m = g.m();
-    std::cerr << "graph with n=" << n << " nodes, m=" << m <<" edges\n";
-    t = top (t, "graph loaded");
+    main_log.cerr(t)
+        << "loaded graph with n=" << n << " nodes, m=" << m <<" edges\n";
+    t = main_log.lap();
     
     // ------------------------- load subset -----------------------
     std::vector<int> sel;
@@ -112,13 +120,14 @@ int main (int argc, char **argv) {
     std::vector<bool> is_sel(n, false);
     for (int v : sel) { is_sel[v] = true; }
     int n_sel = sel.size();
-    std::cerr << "subset of "<< n_sel <<" nodes\n";
-    t = top(t, "subset loaded");
+    main_log.cerr(t) << "loaded subset of "<< n_sel <<" nodes\n";
+    t = main_log.lap();
     
     // ------------------------- hub labeling -----------------------
     pruned_landmark_labeling<graph> hl(g);
     hl.print_stats(std::cerr, is_sel, is_sel);
-    t = top (t, "hub lab");
+    main_log.cerr(t) << "hub lab\n";
+    t = main_log.lap();
 
     // ----------------------------- output ------------------------
     std::vector<graph::edge> edg; 
@@ -141,7 +150,7 @@ int main (int argc, char **argv) {
                 }
             }
             if (edg.size() > 2 * n_sel * n_sel) {
-                std::cerr << "compact " << edg.size() <<" edges\n";
+                main_log.cerr(t) << "compact " << edg.size() <<" edges\n";
                 graph g(n, edg);
                 edg = g.simple().edges();
             }
@@ -155,7 +164,7 @@ int main (int argc, char **argv) {
         std::cout << lab[e.src] <<" "<< lab[e.dst] <<" "<< e.wgt <<"\n";
     }
     
-    t = top (t_start, "end");
+    main_log.cerr() << "end\n";
     exit(0);
 }
 
