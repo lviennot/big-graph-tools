@@ -5,7 +5,12 @@ HDRS:=$(wildcard src/*.hh)
 main: test
 	gunzip -c ex/corse-osm-t.gr.gz | ./test
 
-switzerland: _output/switzerland-out.gr.gz _output/switzerland-in.gr.gz _output/switzerland-clos.gr.gz
+switzerland: switzerland.hltrans
+
+%.hltrans: ex/%.gr.gz
+	make -f myMakefile _output/$*-out.gr.gz
+	make -f myMakefile _output/$*-in.gr.gz
+	make -f myMakefile _output/$*-clos.gr.gz
 
 _output/%-out.gr.gz: ex/%.gr.gz ex/%.stops hltrans
 	mkdir -p _output
