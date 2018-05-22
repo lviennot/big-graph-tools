@@ -5,11 +5,19 @@ HDRS:=$(wildcard src/*.hh)
 main: test
 	gunzip -c ex/corse-osm-t.gr.gz | ./test
 
-switzerland: HL_trans
+switzerland: _output/switzerland-out.gr.gz _output/switzerland-in.gr.gz _output/switzerland-clos.gr.gz
+
+_output/%-out.gr.gz: ex/%.gr.gz ex/%.stops hltrans
 	mkdir -p _output
-	gunzip -c ex/switzerland.gr.gz | ./HL_trans out-hubs - ex/switzerland.stops | gzip -c > _output/switzerland-out.gr.gz
-	gunzip -c ex/switzerland.gr.gz | ./HL_trans in-hubs - ex/switzerland.stops | gzip -c > _output/switzerland-in.gr.gz
-	gunzip -c ex/switzerland.gr.gz | ./HL_trans closure - ex/switzerland.stops | gzip -c > _output/switzerland-out.gr.gz
+	gunzip -c $< | ./hltrans out-hubs - ex/$*.stops | gzip -c > $@
+
+_output/%-in.gr.gz: ex/%.gr.gz ex/%.stops hltrans
+	mkdir -p _output
+	gunzip -c $< | ./hltrans in-hubs - ex/$*.stops | gzip -c > $@
+
+_output/%-clos.gr.gz: ex/%.gr.gz ex/%.stops hltrans
+	mkdir -p _output
+	gunzip -c $< | ./hltrans closure - ex/$*.stops | gzip -c > $@
 
 unit: src/unit.cc $(HDRS)
 	g++ -std=c++11 -O3 -g -rdynamic -pthread -o $@ $<
@@ -18,7 +26,7 @@ unit: src/unit.cc $(HDRS)
 test: src/test.cc $(HDRS)
 	g++ -std=c++11 -O3 -g -rdynamic -pthread -o $@ $<
 
-HL_trans: src/HL_trans.cc $(HDRS)
+hltrans: src/HL_trans.cc $(HDRS)
 	g++ -std=c++11 -O3 -g -rdynamic -pthread -o $@ $<
 
 headers:
@@ -29,7 +37,7 @@ clean:
 	rm -fr test.dSYM
 
 %.rioc: scp
-	ssh rioc.inria.fr 'cd graph/cpp; oarsub -p mem\>=40 -l nodes=1/core=1,walltime=24:00:00 "make -f myMakefile $*"; sleep 5; cat OAR.*.stdout'
+	ssh rioc.inria.fr 'cd graph/cpp; oarsub -p mem\>=50 -l nodes=1/core=1,walltime=24:00:00 "make -f myMakefile $*"; sleep 5; cat OAR.*.stdout'
 
 scp:
 	scp -r myMakefile src rioc.inria.fr:graph/cpp/
