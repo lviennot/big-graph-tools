@@ -49,6 +49,8 @@ public:
                              std::vector<V> sel_to = {},
                              int boost_sel = 1,
                              bool weighted = true) {
+        logging hl_log("- hl -");
+        
         init_index(g.n());
         tree_sampling<G,WL,max_weight,zero_weight> tsampl(n_, boost_sel);
 
@@ -107,9 +109,9 @@ public:
             // release memory:
             if (tsampl.size_deleted()
                   > std::max(tsampl.size_all(), desired_samples) ) {
-                std::cerr << "\nclear tsampl "<< tsampl.size_deleted()
-                          << " "<< tsampl.size_all() <<" "<< desired_samples
-                          << "\n";
+                hl_log.cerr() << "clear tsampl "<< tsampl.size_deleted()
+                              << " "<< tsampl.size_all() <<" "<< desired_samples
+                              << "\n";
                 tsampl.clear();
                 i_from = 0;
                 i_to = 0;
@@ -135,7 +137,7 @@ public:
             if (tsampl.queue_empty()) {
                 if (i_from < sel_from.size() || i_to < sel_to.size()) {
                     // need to resample
-                    std::cerr << "\nclear tsampl, no sel pair covered\n";
+                    hl_log.cerr() << "clear tsampl, no sel pair covered\n";
                     tsampl.clear();
                     i_from = 0;
                     i_to = 0;
@@ -147,11 +149,20 @@ public:
             is_hub[x] = true;
             forward(g, x, trav, weighted, true);
             backward(g_rev, x, trav, weighted, true);
-            progress(i_hub++);
             // update sampled trees:
             tsampl.remove_subtrees(x);
+            //progress(i_hub);
+            if (hl_log.progress())
+                hl_log.cerr() <<"hub "<< i_hub 
+                              <<" : avg_nvis="<< (sum_nvis / (2*(i_hub+1)))
+                              <<" lst_nvis="<< (last_nvis / 2 /(i_hub - last_r))
+                    //<<" n=" << n_ <<" "
+                              <<"avg_hs=" << (sum_nvis / (2*n_))
+                              <<" (" << (sum_nvis * 12 / 1000000) <<"m)"
+                              <<"\n";
+            last_r = i_hub++;
         }
-        std::cerr << "\n";
+        //std::cerr << "\n";
         print_stats(std::cerr, is_sel_from, is_sel_to);
     }
 
