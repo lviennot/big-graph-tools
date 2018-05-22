@@ -133,35 +133,67 @@ int main (int argc, char **argv) {
     std::vector<graph::edge> edg; 
     if (cmd == "out-hubs") {
         edg = hl.out_hub_edges(is_sel, is_sel);
+        for (const graph::edge &e : edg) {
+            std::cout << lab[e.src] <<" "<< lab[e.dst] <<" "<< e.wgt <<"\n";
+        }
     } else if (cmd == "in-hubs") {
         edg = hl.in_hub_edges(is_sel, is_sel);
+        for (const graph::edge &e : edg) {
+            std::cout << lab[e.src] <<" "<< lab[e.dst] <<" "<< e.wgt <<"\n";
+        }
     } else if (cmd == "closure") {
+        // hub graphs
         std::vector<graph::edge> edg_out = hl.out_hub_edges(is_sel, is_sel);
         std::vector<graph::edge> edg_in = hl.in_hub_edges(is_sel, is_sel);
-        edg.reserve(n_sel * n_sel);
         graph g_out(edg_out), g_in(edg_in);
-        for (int u : g_out) {
+        main_log.cerr() << "hub graphs\n";
+        // selection
+        std::vector<int> sel(n_sel), sel_inv(n);
+        for (int i = 0, u = 0; u < n; ++u) {
             if (is_sel[u]) {
+                sel[i] = u;
+                sel_inv[u] = i;
+                ++i;
+            } else {
+                sel_inv[u] = graph::not_vertex;
+            }
+        }
+        main_log.cerr() << "selection\n";
+        // adj matrix
+        std::vector<std::vector<int64_t> > mat(n_sel);
+        for (int i = 0; i < n_sel; ++i) {
+            mat[i].reserve(n_sel);
+            for (int j = 0; j < n_sel; ++j) {
+                mat[i].push_back(INT64_MAX);
+            }
+        }
+        main_log.cerr() << "init matrix\n";
+        // closure
+        for (int u = 0; u < n; ++u) {
+            if (is_sel[u]) {
+                int i = sel_inv[u];
                 for (auto e : g_out[u]) {
-                    if (e.wgt < INT_MAX) for (auto f : g_in[e.dst]) {
-                        if (f.wgt < INT_MAX)
-                            edg.push_back(graph::edge(u, f.dst, e.wgt + f.wgt));
+                    if (e.wgt < INT64_MAX) {
+                        for (auto f : g_in[e.dst]) {
+                            if (f.wgt < INT64_MAX) {
+                                int j = sel_inv[f.dst];
+                                int64_t d_ij = e.wgt + f.wgt;
+                                if (d_ij < mat[i][j]) mat[i][j] = d_ij; 
+                            }
+                        }
                     }
                 }
             }
-            if (edg.size() > 2 * n_sel * n_sel) {
-                main_log.cerr(t) << "compact " << edg.size() <<" edges\n";
-                graph g(n, edg);
-                edg = g.simple().edges();
+        }
+        main_log.cerr() << "closure\n";
+        for (int i = 0; i < n_sel; ++i) {
+            for (int j = 0; j < n_sel; ++j) {
+                std::cout << lab[sel[i]] <<" "<< lab[sel[j]]
+                          <<" "<< mat[i][j] <<"\n";
             }
         }
-        graph g(n, edg);
-        edg = g.simple().edges();
     } else {
         usage_exit(argv);
-    }
-    for (const graph::edge &e : edg) {
-        std::cout << lab[e.src] <<" "<< lab[e.dst] <<" "<< e.wgt <<"\n";
     }
     
     main_log.cerr() << "end\n";
