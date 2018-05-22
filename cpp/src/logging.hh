@@ -77,6 +77,11 @@ public:
         update_now.join();
     }
 
+    double lap() {
+        t_now = time_s();
+        return t_now;
+    }
+
     bool progress(float fact = 1.0) {
         if (t_now.load(std::memory_order_acquire) >= t_last + fact*t_prog) {
             t_last = t_now.load(std::memory_order_acquire);
@@ -86,11 +91,12 @@ public:
         return false;
     }
 
-    std::ostream & cerr(std::string msg = "") {
+    std::ostream & cerr(double t_lap = 0.) {
+        if (t_lap == 0.) t_lap = t_init;
         std::cerr << prefix << (prefix.size() > 0 ? " " : "")
-                  << (t_now.load(std::memory_order_acquire) - t_init) <<"s "
+                  << (t_now.load(std::memory_order_acquire) - t_lap) <<"s "
                   << mem_now.load(std::memory_order_acquire) / 1000 << "m "
-                  << msg << (msg.size() > 0 ? " " : "") <<": ";
+                  <<": ";
         return std::cerr;
     }
 
