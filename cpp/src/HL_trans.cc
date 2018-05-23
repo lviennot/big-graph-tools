@@ -31,9 +31,9 @@ void usage_exit (char **argv) {
         "outputs labels of selected nodes listed in the optional "
         "file [subset] (all nodes if no file is specified)." )
               << paragraph (
-        "With command 'out-hubs' (resp. 'in-hubs'), it outputs the list "
-        "of arcs from selected nodes to their out-hubs (resp. from "
-        "in-hubs to selected nodes)." )
+        "With command 'hubs', it outputs the list "
+        "of arcs from selected nodes to their out-hubs and from "
+        "in-hubs to selected nodes." )
               << paragraph (
         "The promise is that gathering transitive arcs obtained by "
         "following one arc of the 'out-hubs' list and one arc of the "
@@ -44,8 +44,11 @@ void usage_exit (char **argv) {
         "A '-' for [graph] or [subset] stands for standard input.\n"
         " Graph format: one arc [src_id] [dst_id] [length] per line\n"
         " Subset format: one node [id] per line.\n"
-        " Command format: 'in-hubs' or 'out-hubs' or 'closure'\n"
-        " Output format: arcs [node id] [hub/node id] [length].\n";
+        " Command format: 'hubs' or 'closure'\n"
+              <<paragraph (
+         " Output format: arcs [type] [node id] [hub/node id] [length] "
+         "where [type] is either 'i' or 'o' or 'c' for in-hub to node arc, "
+         "or node to out-hub arc, or transitive closure arc respectively." );
         exit(1);
 }
 
@@ -55,8 +58,7 @@ int main (int argc, char **argv) {
 
     // ------------------------ usage -------------------------
     std::string cmd(argc >= 2 ? argv[1] : "");
-    if (argc < 3
-        || (cmd != "out-hubs" && cmd != "in-hubs" && cmd != "closure")) {
+    if (argc < 3 || (cmd != "hubs" && cmd != "closure")) {
         usage_exit(argv);
     }
 
@@ -131,15 +133,14 @@ int main (int argc, char **argv) {
 
     // ----------------------------- output ------------------------
     std::vector<graph::edge> edg; 
-    if (cmd == "out-hubs") {
-        edg = hl.out_hub_edges(is_sel, is_sel);
-        for (const graph::edge &e : edg) {
-            std::cout << lab[e.src] <<" "<< lab[e.dst] <<" "<< e.wgt <<"\n";
-        }
-    } else if (cmd == "in-hubs") {
+    if (cmd == "hubs") {
         edg = hl.in_hub_edges(is_sel, is_sel);
         for (const graph::edge &e : edg) {
-            std::cout << lab[e.src] <<" "<< lab[e.dst] <<" "<< e.wgt <<"\n";
+            std::cout <<"i "<< lab[e.src]<<" "<< lab[e.dst]<<" "<< e.wgt <<"\n";
+        }
+        edg = hl.out_hub_edges(is_sel, is_sel);
+        for (const graph::edge &e : edg) {
+            std::cout <<"o "<< lab[e.src]<<" "<< lab[e.dst]<<" "<< e.wgt <<"\n";
         }
     } else if (cmd == "closure") {
         // hub graphs
@@ -188,7 +189,7 @@ int main (int argc, char **argv) {
         main_log.cerr() << "closure\n";
         for (int i = 0; i < n_sel; ++i) {
             for (int j = 0; j < n_sel; ++j) {
-                std::cout << lab[sel[i]] <<" "<< lab[sel[j]]
+                std::cout <<"c "<< lab[sel[i]] <<" "<< lab[sel[j]]
                           <<" "<< mat[i][j] <<"\n";
             }
         }

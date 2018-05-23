@@ -12,17 +12,19 @@ switzerland: switzerland.hltrans
 	make -f myMakefile _output/$*-in.gr.gz
 	make -f myMakefile _output/$*-clos.gr.gz
 
-_output/%-out.gr.gz: ex/%.gr.gz ex/%.stops hltrans
-	mkdir -p _output
-	gunzip -c $< | ./hltrans out-hubs - ex/$*.stops | gzip -c > $@
+_output/%-out.gr.gz: ex/%-hubs.gr.gz
+	gunzip -c $< | grep -e '^o ' | cut -d' ' -f2-4 | gzip -c > $@
 
-_output/%-in.gr.gz: ex/%.gr.gz ex/%.stops hltrans
+_output/%-in.gr.gz: ex/%-hubs.gr.gz
+	gunzip -c $< | grep -e '^i ' | cut -d' ' -f2-4 | gzip -c > $@
+
+_output/%-hubs.gr.gz: ex/%.gr.gz ex/%.stops hltrans
 	mkdir -p _output
-	gunzip -c $< | ./hltrans in-hubs - ex/$*.stops | gzip -c > $@
+	gunzip -c $< | ./hltrans hubs - ex/$*.stops | gzip -c > $@
 
 _output/%-clos.gr.gz: ex/%.gr.gz ex/%.stops hltrans
 	mkdir -p _output
-	gunzip -c $< | ./hltrans closure - ex/$*.stops | gzip -c > $@
+	gunzip -c $< | ./hltrans closure - ex/$*.stops | cut -d' ' -f2-4 | gzip -c > $@
 
 unit: src/unit.cc $(HDRS)
 	g++ -std=c++11 -O3 -g -rdynamic -pthread -o $@ $<
