@@ -132,8 +132,8 @@ int main (int argc, char **argv) {
     t = main_log.lap();
 
     // ----------------------------- output ------------------------
-    std::vector<graph::edge> edg; 
     if (cmd == "hubs") {
+        std::vector<graph::edge> edg; 
         edg = hl.in_hub_edges(is_sel, is_sel);
         for (const graph::edge &e : edg) {
             std::cout <<"i "<< lab[e.src]<<" "<< lab[e.dst]<<" "<< e.wgt <<"\n";
@@ -160,17 +160,10 @@ int main (int argc, char **argv) {
             }
         }
         main_log.cerr() << "selection\n";
-        // adj matrix
-        std::vector<std::vector<int64_t> > mat(n_sel);
-        for (int i = 0; i < n_sel; ++i) {
-            mat[i].reserve(n_sel);
-            for (int j = 0; j < n_sel; ++j) {
-                mat[i].push_back(INT64_MAX);
-            }
-        }
-        main_log.cerr() << "init matrix\n";
-        // closure
-        for (int u = 0; u < n; ++u) {
+        // trans arcs
+        std::vector<graph::edge> edg;
+        int u = 0;
+        for ( ; u < n; ++u) {
             if (is_sel[u]) {
                 int i = sel_inv[u];
                 for (auto e : g_out[u]) {
@@ -179,18 +172,59 @@ int main (int argc, char **argv) {
                             if (f.wgt < INT64_MAX) {
                                 int j = sel_inv[f.dst];
                                 int64_t d_ij = e.wgt + f.wgt;
-                                if (d_ij < mat[i][j]) mat[i][j] = d_ij; 
+                                edg.push_back(graph::edge(i, j, d_ij));
+                            }
+                        }
+                    }
+                }
+                if (edg.size() > 2 * n_sel * n_sel) break;
+            }
+        }
+        if (u >= n) {
+            main_log.cerr() << "closure\n";
+            edg = graph(edg).simple().edges();
+            for (const graph::edge &e : edg) {
+                std::cout <<"c "<< lab[e.src]<<" "<< lab[e.dst]
+                          <<" "<< e.wgt <<"\n";
+            }
+        } else {
+            // adj matrix is smaller
+            main_log.cerr() << "adj matrix\n";
+            std::vector<std::vector<int64_t> > mat(n_sel);
+            for (int i = 0; i < n_sel; ++i) {
+                mat[i].reserve(n_sel);
+                for (int j = 0; j < n_sel; ++j) {
+                    mat[i].push_back(INT64_MAX);
+                }
+            }
+            // reuse found arcs
+            for (const graph::edge &e : edg) {
+                if (e.wgt < mat[e.src][e.dst]) mat[e.src][e.dst] = e.wgt;
+            }
+            edg = {}; // release memory
+            // end closure
+            for ( ; u < n; ++u) {
+                if (is_sel[u]) {
+                    int i = sel_inv[u];
+                    for (auto e : g_out[u]) {
+                        if (e.wgt < INT64_MAX) {
+                            for (auto f : g_in[e.dst]) {
+                                if (f.wgt < INT64_MAX) {
+                                    int j = sel_inv[f.dst];
+                                    int64_t d_ij = e.wgt + f.wgt;
+                                    if (d_ij < mat[i][j]) mat[i][j] = d_ij; 
+                                }
                             }
                         }
                     }
                 }
             }
-        }
-        main_log.cerr() << "closure\n";
-        for (int i = 0; i < n_sel; ++i) {
-            for (int j = 0; j < n_sel; ++j) {
-                std::cout <<"c "<< lab[sel[i]] <<" "<< lab[sel[j]]
-                          <<" "<< mat[i][j] <<"\n";
+            main_log.cerr() << "closure\n";
+            for (int i = 0; i < n_sel; ++i) {
+                for (int j = 0; j < n_sel; ++j) {
+                    std::cout <<"c "<< lab[sel[i]] <<" "<< lab[sel[j]]
+                              <<" "<< mat[i][j] <<"\n";
+                }
             }
         }
     } else {
