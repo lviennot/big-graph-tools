@@ -29,13 +29,14 @@
  */
 
 
-template<typename W> // weight type
+template<typename V, // vertex-number type
+         typename W, // weight type
+         V not_vertex = std::numeric_limits<V>::max()>
 
 class mgraph {
     // Minimalist graph as a flat array of dst,wgt pairs.
 
 public:
-    typedef int V;
     static const V not_vertex = -1;
     typedef V vertex;
     typedef W weight;
