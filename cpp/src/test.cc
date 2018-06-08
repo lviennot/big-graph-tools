@@ -10,7 +10,7 @@
 #include "skeleton.hh"
 #include "pruned_landmark_labeling.hh"
 
-typedef mgraph<int> graph;
+typedef mgraph<int, int> graph;
 
 double top (double t1, std::string msg) {
     struct timeval tv;
