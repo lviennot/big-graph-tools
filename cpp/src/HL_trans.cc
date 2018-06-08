@@ -113,6 +113,8 @@ int main (int argc, char **argv) {
             if (vi[u] != 0) {
                 int v = vi[u] - 1;
                 sel.push_back(v);
+            } else {
+                std::cerr <<"  stop "<< u <<" not in the graph\n";
             }
         }
     } else {
