@@ -37,6 +37,7 @@ private:
     }
     
     int n_; // number of nodes
+    std::vector<V> ranked_hubs;
     std::vector<label_t> index_;
 
     int i_hub; // next hub number
@@ -160,6 +161,8 @@ public:
                               <<"avg_hs=" << (sum_nvis / (2*n_))
                               <<" (" << (sum_nvis * 12 / 1000000) <<"m)"
                               <<"\n";
+            assert(ranked_hubs.size() == i_hub);
+            ranked_hubs.push_back(x);
             last_r = i_hub++;
         }
         //std::cerr << "\n";
@@ -235,7 +238,9 @@ public:
             if (fwd_sel || is_sel_from[u]) {
                 const label_t &lab_u = index_[u];
                 for (int i = 0; i < lab_u.out_v.size(); ++i) {
-                    edg.push_back(edgeL(u, lab_u.out_v[i], lab_u.out_d[i]));
+                    if (lab_u.out_v[i] == n_) break; // sentinel
+                    V x = ranked_hubs[lab_u.out_v[i]];
+                    edg.push_back(edgeL(u, x, lab_u.out_d[i]));
                 }
             }
         }
@@ -257,7 +262,9 @@ public:
             if (bwd_sel || is_sel_to[u]) {
                 const label_t &lab_u = index_[u];
                 for (int i = 0; i < lab_u.in_v.size(); ++i) {
-                    edg.push_back(edgeL(lab_u.in_v[i], u, lab_u.in_d[i]));
+                    if (lab_u.in_v[i] == n_) break; // sentinel
+                    V x = ranked_hubs[lab_u.in_v[i]];
+                    edg.push_back(edgeL(x, u, lab_u.in_d[i]));
                 }
             }
         }
@@ -493,6 +500,11 @@ public:
                     trav.clear();
                 }
 
+                assert(ranked_hubs.size() == r);
+                ranked_hubs.push_back(r);
+                assert(false); // OLD code, remove this function
+
+                
                 // progress:
                 if (r <= 10 || (r <= 100 && r % 10 == 0) || r % 100 == 0) {
                     std::cerr << r  << " avg_nvis="<< (sum_nvis / (2*(r+1)))
@@ -600,6 +612,8 @@ public:
             V u = rank_order[i_hub];
             forward(g, u, trav, wgted, true);
             backward(g_rev, u, trav, wgted, true);
+            assert(ranked_hubs.size() == i_hub);
+            ranked_hubs.push_back(u);
             progress(i_hub);
         }
         std::cerr << "\n";

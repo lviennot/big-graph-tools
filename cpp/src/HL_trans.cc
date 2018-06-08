@@ -10,7 +10,8 @@
 #include "pruned_landmark_labeling.hh"
 #include "logging.hh"
 
-typedef mgraph<int64_t> graph;
+typedef mgraph<int, int64_t> graph;
+
 
 void usage_exit (char **argv) {
     auto paragraph = [](std::string s, int width=80) -> std::string {

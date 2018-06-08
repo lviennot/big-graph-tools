@@ -174,6 +174,12 @@ int main (int argc, char **argv) {
     std::cerr << "dist "<< u <<" -> "<< v
               << " = " << hl.distance(u, v) <<  std::endl;
     t = top (t, "hub lab");
+    trav.clear();
+    trav.dijkstra(g, u);
+    for (int w : g) {
+        assert(trav.dist(w) == hl.distance(u, w));
+    }
+    t = top (t, "hub lab test");
     int64_t sd = 0;
     int seed = std::rand();
     std::srand(seed);

@@ -31,13 +31,13 @@
 
 template<typename V, // vertex-number type
          typename W, // weight type
-         V not_vertex = std::numeric_limits<V>::max()>
+         V nb_not_vertex = std::numeric_limits<V>::max()>
 
 class mgraph {
     // Minimalist graph as a flat array of dst,wgt pairs.
 
 public:
-    static const V not_vertex = -1;
+    static const V not_vertex = nb_not_vertex;
     typedef V vertex;
     typedef W weight;
     typedef edge::dst_wgt<V,W> edge_head;  // A dst,wgt pair.
@@ -177,14 +177,13 @@ public:
         return edg;
     }
 
-    std::pair<mgraph<W>, std::vector<V> >
+    std::pair<mgraph<V, W, nb_not_vertex>, std::vector<V> >
     subgraph(std::function<bool(V)> is_in, const std::vector<V> &vtx = {})
         const {
         bool use_vtx = vtx.size() > 0;
         if (use_vtx) assert(vtx.size() == n_);
 
-        const V not_vertex = -1;
-        std::vector<V> vtx_sub, vtx_inv(n_, not_vertex);
+        std::vector<V> vtx_sub, vtx_inv(n_, nb_not_vertex);
         V n_sub = 0;
         for (V u = 0; u < n_; ++u) { if (is_in(u)) ++n_sub; }
         vtx_sub.reserve(n_sub);
@@ -207,8 +206,9 @@ public:
             }
         }
 
-        return std::pair<mgraph<W>, std::vector<V> >(mgraph(n_sub, edg),
-                                                     vtx_sub);
+        return std::pair<mgraph<V, W, nb_not_vertex>,
+                         std::vector<V> >(mgraph(n_sub, edg),
+                                          vtx_sub);
     }
 
     
@@ -323,7 +323,7 @@ private:
 
 namespace unit {
 
-    typedef mgraph<int> graph;
+    typedef mgraph<int, int> graph;
     
     void mgraph_test(int n, int deg) {
         std::vector<graph::edge> edg;
