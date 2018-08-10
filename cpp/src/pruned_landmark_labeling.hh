@@ -125,12 +125,18 @@ public:
                     ++i_from;
                 if (i_from < sel_from.size()) {
                     forward(g, sel_from[i_from++], trav, weighted, false);
+                    for (int i = trav.nvis() - 1 ; i > 0 ; --i) {
+                        assert ( ! is_hub[trav.visit(i)] );
+                    }
                     tsampl.add_tree(trav, &is_sel_to);
                 }
                 while (i_to < sel_to.size() && is_hub[sel_to[i_to]])
                     ++i_to;
                 if (i_to < sel_to.size()) {
                     backward(g_rev, sel_to[i_to++], trav, weighted, false);
+                    for (int i = trav.nvis() - 1 ; i > 0 ; --i) {
+                        assert ( ! is_hub[trav.visit(i)] );
+                    }
                     tsampl.add_tree(trav, &is_sel_from);
                 }
             }
@@ -152,18 +158,21 @@ public:
             backward(g_rev, x, trav, weighted, true);
             // update sampled trees:
             tsampl.remove_subtrees(x);
+            assert(ranked_hubs.size() == i_hub);
+            ranked_hubs.push_back(x);
+            ++i_hub;
             //progress(i_hub);
-            if (hl_log.progress())
+            if (hl_log.progress()) {
                 hl_log.cerr() <<"hub "<< i_hub 
                               <<" : avg_nvis="<< (sum_nvis / (2*(i_hub+1)))
                               <<" lst_nvis="<< (last_nvis / 2 /(i_hub - last_r))
                     //<<" n=" << n_ <<" "
-                              <<"avg_hs=" << (sum_nvis / (2*n_))
+                              <<" avg_hs=" << (sum_nvis / (2*n_))
                               <<" (" << (sum_nvis * 12 / 1000000) <<"m)"
                               <<"\n";
-            assert(ranked_hubs.size() == i_hub);
-            ranked_hubs.push_back(x);
-            last_r = i_hub++;
+                last_r = i_hub - 1;
+                last_nvis = 0;
+            }
         }
         //std::cerr << "\n";
         print_stats(std::cerr, is_sel_from, is_sel_to);

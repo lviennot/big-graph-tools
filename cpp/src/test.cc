@@ -90,7 +90,23 @@ int main (int argc, char **argv) {
     }
     std::cerr <<"\n";
     t = top (t, "dijkstra");
+    for (int i = 0; i < 100; ++i) {
+        int u = rand() % n;
+        trav.clear();
+        trav.dijkstra(g, u);
+    }
+    t = top (t, "100 dijkstras");
 
+    // ------------------------- dijkstra from several sources ---------------
+    trav.clear();
+    trav.dijkstra(g, graph::not_vertex,
+                  traversal<graph>::filter_all,
+                  {0, 1, 2}, {100, 0, 0});
+    // from 0 at dist 100, 1 at dist 0 and 2 at dist 0
+    std::cerr << trav.nvis() <<" nodes visited\n";
+    std::cerr << "dist to "<< v <<" = "<< trav.dist(v) <<  std::endl;
+    t = top (t, "several sources dijkstra");
+    
     // ------------------------ skeleton ---------------------------
     skeleton<traversal<graph> > sk(n);
     sk.of_traversal(trav, 1, 2 /* alpha = 1/2 */,

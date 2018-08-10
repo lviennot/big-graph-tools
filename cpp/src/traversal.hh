@@ -208,20 +208,27 @@ public:
         return nvis_ - nvis0;
     }
 
+    static bool filter_all(V v, WL d, V p, WL dp) { return true; }
+    
     // returns number of visited nodes
     int dijkstra (const G &g, V s,
                  std::function<bool(V, WL, V, WL)> filtr
                   = [](V v, WL d, V p, WL dp) { return true; },
-                  std::vector<V> more_sources = {}) {
+                  std::vector<V> more_sources = {},
+                  std::vector<W> more_sources_dist = {}) {
         assert(g.n() <= n_);
         queue_.clear();
         queue_.set_compare([this](V u, V v){ return dist_[u] < dist_[v]; });
         int nvis0 = nvis_;
         more_sources.push_back(s);
-        for (int s : more_sources) {
-            dist_[s] = zero_weight;
-            parent_[s] = s;
-            queue_.push(s);
+        for (int i = 0; i < more_sources.size(); ++i) {
+            V s = more_sources[i];
+            if (s != not_vertex) {
+                dist_[s] = i < more_sources_dist.size() ? more_sources_dist[i]
+                               : zero_weight;
+                parent_[s] = s;
+                queue_.push(s);
+            }
         }
             
         while ( ! queue_.empty()) {

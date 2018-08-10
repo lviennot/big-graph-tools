@@ -10,7 +10,7 @@
  *  Smallest element according to [cmp_less] is popped first. */
 
 
-    static const int not_pos = -1;
+static const int not_pos = -1;
 
 class heap {
 private:

@@ -1,5 +1,4 @@
 #include <cstdlib>
-#include <sys/time.h>
 #include <vector>
 #include <unordered_map>
 #include <iostream>
@@ -64,15 +63,6 @@ int main (int argc, char **argv) {
     }
 
     // ------------------------ time -------------------------
-    auto  top = [](double t1, std::string msg) -> double {
-        struct timeval tv;
-        gettimeofday(&tv, NULL);
-        double t2 = tv.tv_sec + tv.tv_usec * 1e-6;
-        std::cerr << "-- time " << msg << " : " << (t2 - t1) << "s\n";
-        std::cerr.flush();
-        return t2;
-    };
-
     main_log.cerr() << "start\n";
     double t = main_log.lap();
 
