@@ -57,7 +57,7 @@ int main (int argc, char **argv) {
     timetable ttbl{dir+"stop_times.csv", dir+"transfers.csv"};
     std::cerr << ttbl.n_r <<" routes, "<< ttbl.n_st <<" sations, "
               << ttbl.n_s <<" stops\n";
-    int r = 884;
+    int r = 43;
     std::cerr <<"route "<< r <<" : ";
     for (auto s : ttbl.route_stops[r]) {
         std::cerr << s <<","<< ttbl.stop_station[s] <<" ";
@@ -96,7 +96,7 @@ int main (int argc, char **argv) {
 
     // make n_q successful queries
     t = main_log.lap();
-    int n_q = 1000, t_beg = 5*3600, t_end = 21*3600;
+    int n_q = 1000, t_beg = 5*3600, t_end = 18*3600;
     std::vector<std::tuple<int, int, int> > queries;
     int n_try = 0, n_err = 0;
     while (queries.size() < n_q) {

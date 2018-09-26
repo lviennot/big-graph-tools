@@ -174,16 +174,23 @@ private:
                 // check trip does not overpass:
                 bool overpass = false;
                 const auto &prev = trips_of[rte][i-1];
-                const auto &trp = trips_of[rte][i];
+                auto &trp = trips_of[rte][i];
                 for (int i = 0; i < trp.size(); ++i) {
-                    if(trp[i].second < prev[i].second) // departs before
+                    if (trp[i].second < prev[i].second // departs before
+                        || trp[i].first < prev[i].first) { // arrives before
                             overpass = true;
+                            // quick fix :
+                            trp[i].second = std::max(trp[i].second,
+                                                     prev[i].second);
+                            trp[i].first = std::max(trp[i].first,
+                                                    prev[i].first);
+                    }
                 }
                 if(overpass) {
                     ++n_overpass;
                     std::cerr << "overpass in " << rte <<" : ";
                     for (S u : route_stops[rte]) {
-                        std::cerr << stop_station[u] <<" ";
+                        std::cerr << station_id[stop_station[u]] <<" ";
                     }
                     std::cerr <<"\n";
                 }

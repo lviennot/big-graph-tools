@@ -13,7 +13,7 @@
 class raptor {
 private:
     const timetable ttbl;
-    //connection_scan csa;
+    connection_scan csa;
 
     typedef timetable::ST ST;
     typedef timetable::S S;
@@ -39,7 +39,7 @@ private:
 public:
     raptor(const timetable tt)
         : ttbl(tt),
-          //csa(tt),
+          csa(tt),
           st_eat(tt.n_st),
           //eat(tt.n_s)),
           improved_stations(),
@@ -74,11 +74,14 @@ public:
     }
 
     T earliest_arrival_time(const ST src, const ST dst, const T t_dep,
-                            const T min_chg_time = 0,
+                            const T min_chg_time = 60,
                             const int max_ntrips = INT_MAX) {
 
         
-        //T arr_csa = csa.earliest_arrival_time(src, dst, t_dep);
+        T arr_csa = csa.earliest_arrival_time(src, dst, t_dep);
+        // Track for debug :
+        ST st1 = 3780, st2 = 3785; S stop1 = 3866;
+        R rt1 = 154;
 
         // initialize
         //for (T &t : eat) { t = ttbl.t_max; }
@@ -94,16 +97,16 @@ public:
         */
 
         // update helper (first phase)
-        auto reach_station_1 = [this, dst](ST st, T t, R r) {
+        auto reach_station_1 = [this, dst, st1, st2](ST st, T t, R r) {
             if (t < st_eat[st]
                 && t < st_eat[dst] // target pruning
                 ) {
-                /* bool print = st == 4783 || st == 10718;
+                bool print = st == st1 || st == st2;
                 if (print)
                     std::cerr <<"add station "<< st
                               <<" at "<< t <<" thrg="<< r
                               <<"\n";
-                */
+                /* */
                 st_eat[st] = t;
                 if ( ! station_has_improved[st]) {
                     improved_stations.push_back(st);
@@ -114,14 +117,14 @@ public:
         };
 
         // update helper (second phase)
-        auto reach_station_2 = [this, dst](ST st, T t) {
-            /* bool print = st == 4783 || st == 10718;
+        auto reach_station_2 = [this, dst, st1, st2, rt1](ST st, T t) {
+            bool print = st == st1 || st == st2;
             if(print) std::cerr << st <<" at "<< t <<" vs "<< st_eat[st]
                                 << ", "<< st_eat[dst]
                                 <<" has_impr="<< station_has_improved[st]
                                 <<" thrg="<< station_improved_through[st]
                                 <<"\n";
-            */
+            /* */
             if ((t < st_eat[st]
                  || (t == st_eat[st] && station_has_improved[st]))
                 && t < st_eat[dst] // target pruning
@@ -140,6 +143,12 @@ public:
                         stop_has_improved[u] = true;
                         int i = ttbl.stop_route[u].second;
                         int i_prev = route_has_improved_from[r];
+                        if (print || r == rt1)
+                            std::cerr <<"add route "<< r
+                                      <<" at "<< u <<" of "<< st <<" i="<< i
+                                      <<" iprev=" << i_prev
+                                      <<" at "<< st_eat[st]
+                                      <<"\n";
                         if (i_prev == not_stop_index) {
                             improved_routes.push_back(r);
                             route_has_improved_from[r] = i;
@@ -160,8 +169,8 @@ public:
         for (int k = 1; k <= max_ntrips; ++k) {
 
             // first phase
-            //std::cerr <<"-- k="<< k <<" eat="<< st_eat[dst]
-            //          <<" "<< improved_routes.size() <<" routes\n";
+            std::cerr <<"-- k="<< k <<" eat="<< st_eat[dst]
+                      <<" "<< improved_routes.size() <<" routes\n";
             if (improved_routes.size() == 0) {
                 //std::cerr << k <<" rounds (no route improved)\n";
                 break;
@@ -191,11 +200,17 @@ public:
                         // if (stop_has_improved[u])
                         // just improved again, ignore previous improve
                     } else {
-                        //if (x > x_last) break;
+                        //if (x > x_last && k > 1) break;
+                        if (u == stop1)
+                            std::cerr << u
+                                      <<" prev "<< ttbl.stop_departures[u][y-1]
+                                      <<" vs "<< eat + min_chg_time
+                                      <<"\n";
                         if (stop_has_improved[u]) {
                             while (y-1 >= 0
                                    && ttbl.stop_departures[u][y-1]
-                                      >= eat + min_chg_time) {
+                                       - min_chg_time // avoid overflow!
+                                   >= eat) {
                                 --y;
                             }
                         }
@@ -214,16 +229,26 @@ public:
             }
             for (ST st : improved_stations) {
                 reach_station_2(st, st_eat[st]);
+                if (st == st1 || st == st2)
+                    std::cerr <<"improved "<< st <<" at "<< st_eat[st] <<"\n";
                 for (auto transf : transfers[st]) {
-                    if (transf.dst != st)
+                    if (transf.dst != st) {
+                        if (transf.dst == st1 || transf.dst == st2)
+                            std::cerr <<"transf to " << transf.dst
+                                      <<" : "<< transf.wgt
+                                      <<" from "<< st <<" at "<< st_eat[st]
+                                      <<" : "<< st_eat[st] + transf.wgt
+                                      <<" <? "<< st_eat[transf.dst]
+                                      <<"\n";
                         reach_station_2(transf.dst, st_eat[st] + transf.wgt);
+                    }
                 }
                 station_has_improved[st] = false;
                 station_improved_through[st] = ttbl.n_r; // no route
             }
             improved_stations.clear();
 
-            /* for (int i = 0; i < ttbl.n_st; ++i) {
+            for (int i = 0; i < ttbl.n_st; ++i) {
                 if (st_eat[i] > csa.st_eat[i] && k >= csa.n_trips[i]
                     && csa.st_eat[i] < st_eat[dst]) {
                     std::cerr << src <<" -> "<< dst << " at "<< t_dep
@@ -237,7 +262,7 @@ public:
                 assert(st_eat[i] <= csa.st_eat[i] || k < csa.n_trips[i]
                        || csa.st_eat[i] >= st_eat[dst]);
             }
-            */
+            /* */
         }
 
         return st_eat[dst];

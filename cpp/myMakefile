@@ -8,6 +8,7 @@ main: test
 switzerland: switzerland.hltrans
 
 %.hltrans: ex/%.gr.gz
+	make -f myMakefile _output/$*-hubs.gr.gz
 	make -f myMakefile _output/$*-out.gr.gz
 	make -f myMakefile _output/$*-in.gr.gz
 	make -f myMakefile _output/$*-clos.gr.gz
@@ -22,6 +23,10 @@ _output/%-hubs.gr.gz: ex/%.gr.gz ex/%.stops hltrans
 	mkdir -p _output
 	gunzip -c $< | ./hltrans hubs - ex/$*.stops | gzip -c > $@
 
+_output/%-hubsall.gr.gz: ex/%.gr.gz hltrans
+	mkdir -p _output
+	gunzip -c $< | ./hltrans hubs - | gzip -c > $@
+
 _output/%-clos.gr.gz: ex/%.gr.gz ex/%.stops hltrans
 	mkdir -p _output
 	gunzip -c $< | ./hltrans closure - ex/$*.stops | cut -d' ' -f2-4 | gzip -c > $@
@@ -34,6 +39,15 @@ test: src/test.cc $(HDRS)
 	g++ -std=c++11 -O3 -g -rdynamic -pthread -o $@ $<
 
 hltrans: src/HL_trans.cc $(HDRS)
+	g++ -std=c++11 -O3 -g -rdynamic -pthread -o $@ $<
+
+ch: src/CH.cc $(HDRS)
+	g++ -std=c++11 -O3 -g -rdynamic -pthread -o $@ $<
+
+gtfs2graph: src/gtfs2graph.cc $(HDRS)
+	g++ -std=c++11 -O3 -g -rdynamic -pthread -o $@ $<
+
+%.o: src/%.cc $(HDRS)
 	g++ -std=c++11 -O3 -g -rdynamic -pthread -o $@ $<
 
 headers:

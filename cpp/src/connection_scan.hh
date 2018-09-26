@@ -128,7 +128,7 @@ public:
     }
 
     T earliest_arrival_time(const ST src, const ST dst, const T t_dep,
-                            const T min_chg_time = 0) {
+                            const T min_chg_time = 60) {
         // initialize
         for (int i = 0; i < ttbl.n_st; ++i) { st_eat[i] = ttbl.t_max; }
         for (int i = 0; i < ttbl.n_st; ++i) { n_trips[i] = n_tr; }
@@ -137,11 +137,17 @@ public:
         //scanned_trips.clear();
 
         // Track for debug :
-        ST st1 = 8719, st2 = 8717;
-        R rt1 = 495;
+        ST st1 = 3780, st2 = 3785;
+        R rt1 = 154;
 
         st_eat[src] = t_dep;
         n_trips[src] = 0;
+
+        std::cerr <<"\n\ncsa : "<< src <<" at "<< st_eat[src]
+                  <<" to "<< dst <<" at "<< st_eat[dst]
+                  <<" init. "<< n_trips[src] <<","
+                  << n_trips[dst] <<" trips\n";
+
         assert(t_dep < conn_at.size()); // seconds in a day
         assert(conn[conn_at[t_dep]].dep >= t_dep);
         assert(conn_at[t_dep] == 0 || conn[conn_at[t_dep] - 1 ].dep < t_dep);
@@ -153,27 +159,32 @@ public:
             }
             ST st_from = ttbl.stop_station[c.from];
             if (trip_boarded[c.trip]
-                || st_eat[st_from] + min_chg_time <= c.dep) {
+                || st_eat[st_from] <= c.dep - min_chg_time) { // avoid overflow!
                 //if ( ! trip_boarded[c.trip] ) {
                     //scanned_trips.push_back(c.trip);
-                /*if (trip_route[c.trip].first == rt1 && ! trip_boarded[c.trip])
+                if (trip_route[c.trip].first == rt1
+                    && (n_trips[st_from]+1 < trip_ntrips[c.trip]
+                        || ! trip_boarded[c.trip]))
                     std::cerr << "board "<< c.trip
                               <<" of route "<< trip_route[c.trip].first
                               <<" in "<< st_from <<" "<< c.index
                               <<" at "<< c.dep
                               <<" >= "<< st_eat[st_from]
                               <<" ntrips=" << n_trips[st_from]
+                              <<" chtm="<< min_chg_time
                               <<"\n";
-                 */
+                /* */
                 trip_boarded[c.trip] = true;
-                trip_ntrips[c.trip] = std::min(trip_ntrips[c.trip],
-                                               n_trips[st_from]+1);
+                if (st_eat[st_from] <= c.dep - min_chg_time) {
+                    trip_ntrips[c.trip] = std::min(trip_ntrips[c.trip],
+                                                   n_trips[st_from]+1);
+                }
                 //}
                 ST st_to = ttbl.stop_station[c.to];
                 if (c.arr < st_eat[st_to]) {
                     st_eat[st_to] = c.arr;
                     n_trips[st_to] = trip_ntrips[c.trip];
-                    /*if (trip_route[c.trip].first == rt1
+                    if (trip_route[c.trip].first == rt1
                         || st_to == st1 || st_to == st2) {
                         std::cerr << "  conn of "<< c.trip
                                   <<" on "<< trip_route[c.trip].first
@@ -183,11 +194,11 @@ public:
                                   <<" ntrips="<< trip_ntrips[c.trip]
                                   <<"\n";
                     }
-                     */
+                    /* */
                     // transfers :
                     for (auto transf : transfers[st_to]) {
                         if (c.arr + transf.wgt < st_eat[transf.dst]) {
-                            /*if (transf.dst == st1 || transf.dst == st2)
+                            if (transf.dst == st1 || transf.dst == st2)
                                 std::cerr << transf.dst
                                           <<" is "<< transf.wgt <<"s from "
                                           << st_to <<" in trip "<< c.trip
@@ -195,8 +206,9 @@ public:
                                           << trip_route[c.trip].first
                                           <<","<< trip_route[c.trip].second
                                           <<" at "<< c.arr + transf.wgt
+                                          <<" ntrips="<< trip_ntrips[c.trip]
                                           <<"\n";
-                             */
+                            /* */
                             st_eat[transf.dst] = c.arr + transf.wgt;
                             n_trips[transf.dst] = trip_ntrips[c.trip];
                         }
@@ -207,8 +219,8 @@ public:
 
         //for (TR tr : scanned_trips) { trip_boarded[tr] = false; }
 
-        //std::cerr <<"\n\neat="<< st_eat[dst]
-        //          <<" in "<< n_trips[dst] <<" trips\n";
+        std::cerr <<"\neat="<< st_eat[dst]
+                  <<" in "<< n_trips[dst] <<" trips\n";
         
         return st_eat[dst];
     }

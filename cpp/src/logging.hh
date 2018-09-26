@@ -93,8 +93,10 @@ public:
     }
 
     std::ostream & cerr(double t_lap = 0.) {
-        if (t_lap == 0.) t_lap = t_init;
+        bool incr = true;
+        if (t_lap == 0.) { t_lap = t_init; incr = false; }
         std::cerr << prefix << (prefix.size() > 0 ? " " : "")
+                  << (incr ? "+" : "")
                   << (t_now.load(std::memory_order_acquire) - t_lap) <<"s "
                   << mem_now.load(std::memory_order_acquire) / 1000 << "m "
                   <<": ";
