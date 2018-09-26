@@ -96,7 +96,7 @@ int main (int argc, char **argv) {
 
     // make n_q successful queries
     t = main_log.lap();
-    int n_q = 1000, t_beg = 5*3600, t_end = 18*3600;
+    int n_q = 1000, t_beg = 5*3600, t_end = 21*3600;
     std::vector<std::tuple<int, int, int> > queries;
     int n_try = 0, n_err = 0;
     while (queries.size() < n_q) {
