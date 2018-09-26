@@ -13,7 +13,7 @@
 class raptor {
 private:
     const timetable ttbl;
-    connection_scan csa;
+    //connection_scan csa;
 
     typedef timetable::ST ST;
     typedef timetable::S S;
@@ -39,7 +39,7 @@ private:
 public:
     raptor(const timetable tt)
         : ttbl(tt),
-          csa(tt),
+          //csa(tt),
           st_eat(tt.n_st),
           //eat(tt.n_s)),
           improved_stations(),
@@ -78,7 +78,7 @@ public:
                             const int max_ntrips = INT_MAX) {
 
         
-        T arr_csa = csa.earliest_arrival_time(src, dst, t_dep);
+        //T arr_csa = csa.earliest_arrival_time(src, dst, t_dep);
         // Track for debug :
         ST st1 = 3780, st2 = 3785; S stop1 = 3866;
         R rt1 = 154;
@@ -209,6 +209,12 @@ public:
                                       <<"\n";
                         */
                         if (stop_has_improved[u]) {
+                            /* dichotomic search does not seem to help
+                            if (y == y_end) {
+                                auto lower = std::lower_bound(ttbl.stop_departures[u].begin(), ttbl.stop_departures[u].end(), std::max(eat, eat + min_chg_time));
+                                y = std::distance(ttbl.stop_departures[u].begin(), lower);
+                            }
+                            */
                             while (y-1 >= 0
                                    && ttbl.stop_departures[u][y-1]
                                        - min_chg_time // avoid overflow!
