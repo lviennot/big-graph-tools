@@ -124,6 +124,20 @@ int main (int argc, char **argv) {
     main_log.cerr(t) << "hub lab\n";
     t = main_log.lap();
 
+    // ---------------- check --------
+    traversal<graph> trav(g.n());
+    std::vector<int> src = {6116};
+    for (int i = 0; i < 100; ++i) src.push_back(rand() % g.n());
+    std::cerr<< hl.distance(6116, 7189) <<" "<< hl.distance(6116, 7352) <<"\n";
+    for (int s : src) {
+        trav.clear();
+        trav.dijkstra(g, s);
+        for (int u : g) {
+            assert(trav.dist(u) == hl.distance(s, u));
+        }
+    }
+    
+    
     // ----------------------------- output ------------------------
     if (cmd == "hubs") {
         std::vector<graph::edge> edg; 

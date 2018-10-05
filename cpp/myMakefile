@@ -13,10 +13,10 @@ switzerland: switzerland.hltrans
 	make -f myMakefile _output/$*-in.gr.gz
 	make -f myMakefile _output/$*-clos.gr.gz
 
-_output/%-out.gr.gz: _output/%-hubs.gr.gz
+%-out.gr.gz: %-hubs.gr.gz
 	gunzip -c $< | grep -e '^o ' | cut -d' ' -f2-4 | gzip -c > $@
 
-_output/%-in.gr.gz: _output/%-hubs.gr.gz
+%-in.gr.gz: %-hubs.gr.gz
 	gunzip -c $< | grep -e '^i ' | cut -d' ' -f2-4 | gzip -c > $@
 
 _output/%-hubs.gr.gz: ex/%.gr.gz ex/%.stops hltrans
