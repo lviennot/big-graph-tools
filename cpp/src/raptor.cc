@@ -36,6 +36,8 @@ int main (int argc, char **argv) {
     main_log.cerr() << "start\n";
     double t = main_log.lap();
 
+    int t_from = std::stoi(argv[1]), t_to = std::stoi(argv[2]);
+
     /* ------------------------- load csv ----------------------
     auto rows = timetable::read_csv(argv[1], 2, "service_id", "tuesday");
     for (auto r : rows) {
@@ -54,7 +56,9 @@ int main (int argc, char **argv) {
             dir+"calendar.txt", dir+"calendar_dates.txt",
             dir+"trips.txt", dir+"stop_times.txt", dir+"transfers.txt"};
     */
-    timetable ttbl{dir+"stop_times.csv", dir+"transfers.csv"};
+    timetable ttbl{dir+"stop_times.csv",
+            dir+"in_hubs.gr", dir+"out_hubs.gr",
+            dir+"transfers.csv"};
     std::cerr << ttbl.n_r <<" routes, "<< ttbl.n_st <<" sations, "
               << ttbl.n_s <<" stops\n";
     int r = 43;
@@ -85,7 +89,7 @@ int main (int argc, char **argv) {
     raptor rpt(ttbl);
     main_log.cerr(t) << "raptor initialized\n";
     t = main_log.lap();
-    std::cerr << rpt.earliest_arrival_time(2637, 2670, 0) <<"\n";
+    std::cerr << rpt.earliest_arrival_time(2637, 967, 0) <<"\n";
     std::cerr << rpt.earliest_arrival_time(2543, 2549, 0) <<"\n";
     std::cerr << rpt.earliest_arrival_time(ttbl.id_to_station["3750014"],
                                            ttbl.id_to_station["5709848"],
@@ -97,29 +101,36 @@ int main (int argc, char **argv) {
     // make n_q successful queries
     t = main_log.lap();
     int n_q = 1000, t_beg = 5*3600, t_end = 21*3600;
+    t_beg = t_from; t_end = t_to;
     std::vector<std::tuple<int, int, int> > queries;
+    uint64_t sum = 0, n_ok = 0;
     int n_try = 0, n_err = 0;
     while (queries.size() < n_q) {
         ++n_try;
         int src = rand() % ttbl.n_st;
         int dst = rand() % ttbl.n_st;
         int t = t_beg + rand() % (t_end - t_beg);
+        // 13890 -> 19202 at 10130
+        //PB ferm trans. : src = 13890; dst = 19202; t = 10130;
         int arr1 = rpt.earliest_arrival_time(src, dst, t);
-        int arr2 = csa.earliest_arrival_time(src, dst, t);
-        if (arr1 != arr2 && n_err++ < 20) {
+        int arr2 = csa.earliest_arrival_time(src, dst, t, false, true);
+        if (arr1 != arr2 && n_err++ < 10) {
             std::cerr <<" csa diff : "<< src <<" -> "<< dst <<" at "<< t
                       <<" : "<< arr1 <<", "<< arr2 <<"\n"; 
         }
-        assert(arr1 == arr2);
-        if (arr1 < ttbl.t_max) {
+        assert(arr1 <= arr2);
+        if (arr2 < ttbl.t_max) { ++n_ok; }
+        if (arr1 < ttbl.t_max && arr2 < ttbl.t_max) {
+            sum += arr2 - arr1;
             queries.push_back(std::make_tuple(src, dst, t));
         }
     }
     main_log.cerr(t) <<"random query success rate : "
                      << (n_q*100/n_try) <<"% for "<< n_try <<" queries\n";
+    std::cerr << n_ok <<" rpt==csa, E[eat_csa - eat_rpt] = "<< (sum/n_q) <<"\n";
     // go
+    sum = 0, n_ok = 0;
     t = main_log.lap();
-    uint64_t sum = 0, n_ok = 0;
     for (auto q : queries) {
         int src = std::get<0>(q);
         int dst = std::get<1>(q);
@@ -145,7 +156,7 @@ int main (int argc, char **argv) {
         int dst = std::get<1>(q);
         int t = std::get<2>(q);
         assert(t <= t_end);
-        int arr = csa.earliest_arrival_time(src, dst, t);
+        int arr = csa.earliest_arrival_time(src, dst, t, false, true);
         assert(arr < ttbl.t_max);
         sum += arr - t;        
     }

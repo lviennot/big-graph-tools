@@ -23,34 +23,31 @@ public:
     typedef int R; // routes
     typedef int T; // time
 
-    const int t_min = 0, t_max = std::numeric_limits<int>::max();
+    const int t_min = 0, t_max = std::numeric_limits<int>::max() / 2;
 
     typedef std::string id;
     typedef mgraph<ST, T> graph;
 
-    size_t n_st, n_s, n_r; // number of stations, stops and routes
+    size_t n_st, n_s, n_r, n_h; // number of stations, stops, routes, hubs
     std::vector<std::vector<S> > station_stops; // stops of a station
-    std::vector<id> station_id; // id from the gtfs data
+    std::vector<id> station_id, hub_id; // id from the gtfs data
     std::vector<ST> stop_station;
     std::vector<std::pair<R, int> > stop_route; // route at a stop, and index of stop in the route sequence
     std::vector<std::vector<T> > stop_departures; // departure time
+    std::vector<std::vector<T> > stop_arrivals; // arrival time
     std::vector<std::vector<S> > route_stops; // stop sequence of a route
     std::vector<std::vector<std::vector<std::pair<T,T> > > > trips_of; // trips of a route : arrival/departure times at each stop
-    graph transfers;
+    graph transfers, inhubs, outhubs;
     
     std::map<std::vector<id>, R> stations_to_route;
-    std::map<id, ST> id_to_station;
+    std::map<id, ST> id_to_station, id_to_hub;
 
 public:
     timetable(std::string day, std::string date,
               std::string calendar, std::string calendar_dates,
               std::string tripsfile, std::string stop_times,
               std::string transfersfile, bool symmetrize = true)
-        : n_st(0), n_s(0), n_r(0),
-          station_stops(), station_id(),
-          stop_route(), stop_departures(),
-          route_stops(), trips_of(), transfers(),
-          stations_to_route(), id_to_station() 
+        : n_st(0), n_s(0), n_r(0), n_h(0)
     {
         auto services = services_at(day, date, calendar, calendar_dates);
         std::cerr << services.size() <<" services\n";
@@ -67,11 +64,7 @@ public:
 
     timetable(std::string stop_times,
               std::string transfersfile, bool symmetrize = true)
-        : n_st(0), n_s(0), n_r(0),
-          station_stops(), station_id(),
-          stop_route(), stop_departures(),
-          route_stops(), trips_of(), transfers(),
-          stations_to_route(), id_to_station() 
+        : n_st(0), n_s(0), n_r(0), n_h(0)
     {
         auto trip_seq = trips_sequences_oneday(stop_times);
         int events = 0;
@@ -80,6 +73,88 @@ public:
         auto transf = station_transfers_2(transfersfile);
         std::cerr << transf.size() <<" transfers\n";
         build(trip_seq, transf, symmetrize);
+    }
+
+    timetable(std::string stop_times,
+              std::string inhubsfile, std::string outhubsfile,
+              std::string transfersfile, bool symmetrize = true)
+        : n_st(0), n_s(0), n_r(0), n_h(0)
+    {
+        auto trip_seq = trips_sequences_oneday(stop_times);
+        int events = 0;
+        for (auto seq : trip_seq) events += seq.second.size();
+        std::cerr << events <<" events\n";
+        auto transf = station_transfers_2(transfersfile);
+        std::cerr << transf.size() <<" transfers\n";
+        build(trip_seq, transf, symmetrize);
+        // hubs :
+        assert(n_st == station_id.size());
+        hub_id.reserve(n_st);
+        for (int st = 0; st < n_st; ++st) {
+            hub_id.push_back(station_id[st]);
+            id_to_hub[station_id[st]] = st;
+        }
+        n_h = hub_id.size();
+        auto get_hub = [this](std::string h) -> ST {
+            auto search = id_to_hub.find(h);
+            if (search == id_to_hub.end()) {
+                assert(n_h == hub_id.size());
+                hub_id.push_back(h);
+                id_to_hub[h] = n_h;
+                return n_h++;
+            }
+            return search->second;
+        };
+        // in-hubs :
+        std::vector<graph::edge> edg;
+        std::vector<bool> seen(n_st, false);
+        auto rows = read_tuples(inhubsfile, 3);
+        edg.reserve(rows.size());
+        for (auto r : rows) {
+            auto st = id_to_station.find(r[1]);
+            if (st != id_to_station.end()) {
+                ST h = get_hub(r[0]);
+                ST s = st->second;
+                seen[s] = true;
+                T delay = std::stoi(r[2]);
+                edg.push_back(graph::edge(h, s, delay));
+            }
+        }
+        for (int st = 0; st < n_st; ++st)
+            if ( ! seen[st]) edg.push_back(graph::edge(st, st, 0));
+        std::sort(edg.begin(), edg.end(), [](const graph::edge &e,
+                                             const graph::edge &f) {
+                      return e.wgt < f.wgt;
+                  });
+        inhubs.set_edges(edg);
+        std::cerr << inhubs.n() <<" in-hubs of avg size "
+                  << (inhubs.m() / n_st) <<"\n";
+        // out-hubs :
+        edg.clear();
+        for (int st = 0; st < n_st; ++st) seen[st] = false;
+        rows = read_tuples(outhubsfile, 3);
+        edg.reserve(rows.size());
+        for (auto r : rows) {
+            auto st = id_to_station.find(r[0]);
+            if (st != id_to_station.end()) {
+                ST s = st->second;
+                auto h = id_to_hub.find(r[1]);
+                if (h != id_to_hub.end()) {
+                    T delay = std::stoi(r[2]);
+                    edg.push_back(graph::edge(s, h->second, delay));
+                }
+            }
+        }
+        for (int st = 0; st < n_st; ++st)
+            if ( ! seen[st]) edg.push_back(graph::edge(st, st, 0));
+        std::sort(edg.begin(), edg.end(), [](const graph::edge &e,
+                                             const graph::edge &f) {
+                      return e.wgt < f.wgt;
+                  });
+        outhubs.set_edges(edg);
+        std::cerr << outhubs.n() <<" out-hubs of avg size "
+                  << (outhubs.m() / n_st) <<"\n";
+        std::cerr << n_h <<" hubs\n";
     }
 
 private:
@@ -199,17 +274,21 @@ private:
         std::cerr << n_overpass <<" overpasses\n";
 
         stop_departures.reserve(n_s);
+        stop_arrivals.reserve(n_s);
         for (S s = 0; s < n_s; ++s) {
             R rte = stop_route[s].first;
             int is = stop_route[s].second;
             assert(is < route_stops[rte].size());
             int ntrips = trips_of[rte].size();
-            std::vector<T> deps;
+            std::vector<T> deps, arrs;
             deps.reserve(ntrips);
+            arrs.reserve(ntrips);
             for (int i = 0; i < ntrips; ++i) {
                 assert(trips_of[rte][i].size() == route_stops[rte].size());
+                arrs.push_back(trips_of[rte][i][is].first);
                 deps.push_back(trips_of[rte][i][is].second);
             }
+            stop_arrivals.push_back(arrs);
             stop_departures.push_back(deps);
         }
 
@@ -219,8 +298,9 @@ private:
         for (auto tr : transf) {
             id from = std::get<0>(tr);
             id to = std::get<1>(tr);
-            create_station(from);
-            create_station(to);
+            if (id_to_station.find(from) == id_to_station.end()
+                || id_to_station.find(to) == id_to_station.end())
+                continue; // transitive closure does the necessary job
             ST st_from = id_to_station[from];
             ST st_to = id_to_station[to];
             T delay = std::get<2>(tr);
@@ -240,14 +320,16 @@ private:
         assert(route_stops.size() == n_r);
         assert(stop_route.size() == n_s);
         assert(stop_departures.size() == n_s);
+        assert(stop_arrivals.size() == n_s);
         for (S u = 0; u < n_s; ++u) {
             R r = stop_route[u].first;
             int i = stop_route[u].second;
             assert(stop_departures[u].size() == trips_of[r].size());
+            assert(stop_arrivals[u].size() == trips_of[r].size());
             assert(i < route_stops[r].size());
             assert(route_stops[r][i] == u);
-            assert(trips_of[r].size() == stop_departures[u].size());
             for (int p = 0; p < trips_of[r].size(); ++p) {
+                assert(trips_of[r][p][i].first == stop_arrivals[u][p]);
                 assert(trips_of[r][p][i].second == stop_departures[u][p]);
             }
         }
@@ -258,6 +340,7 @@ private:
             }
         }
     }
+
     
     static std::set<id> services_at(std::string day, std::string date,
                                     std::string calendar,
@@ -369,9 +452,27 @@ private:
     
 public:
     static std::vector<std::vector<std::string> >
+    read_tuples(const std::string filename, const size_t ncols) {
+        std::vector<std::vector<std::string> > rows;
+        FILE *in = filename != "-" ? fopen(filename.c_str(), "r") : stdin;
+        char line[100000];
+
+        for ( ; fgets(line, sizeof line, in) != NULL ; ) {
+            auto v = split(line, ' ');
+            if (v.size() != ncols) {
+                std::cerr <<"wrong ncols : '"<< line <<"'\n";
+                assert(v.size() == ncols);
+            }
+            rows.push_back(v);
+        }
+        return rows;
+    }
+
+    static std::vector<std::vector<std::string> >
     read_csv(const std::string filename, const size_t ncol, ...) { // ... = column names
         std::vector<std::vector<std::string> > rows;
         FILE *in = filename != "-" ? fopen(filename.c_str(), "r") : stdin;
+        assert(in != nullptr);
         char line[100000];
         bool first = true;
 
