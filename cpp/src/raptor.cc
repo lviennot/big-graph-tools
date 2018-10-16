@@ -61,6 +61,7 @@ int main (int argc, char **argv) {
             dir+"transfers.csv"};
     std::cerr << ttbl.n_r <<" routes, "<< ttbl.n_st <<" sations, "
               << ttbl.n_s <<" stops\n";
+    /*
     int r = 43;
     std::cerr <<"route "<< r <<" : ";
     for (auto s : ttbl.route_stops[r]) {
@@ -82,8 +83,10 @@ int main (int argc, char **argv) {
                   <<"\n";
     }
     std::cerr <<"\n";
+    */
     main_log.cerr(t) << "timetable\n";
     t = main_log.lap();
+    //exit(0);
 
     // --------------- earliest arrival time through Raptor ---------
     raptor rpt(ttbl);
@@ -98,9 +101,13 @@ int main (int argc, char **argv) {
     main_log.cerr(t) << "csa initialized\n";
     t = main_log.lap();
 
+    //bool hub=false, trf=true;
+    bool hub=true, trf=false;
+    int chg=60, km=32;
+
     // make n_q successful queries
     t = main_log.lap();
-    int n_q = 1000, t_beg = 5*3600, t_end = 21*3600;
+    int n_q = 100, t_beg = 5*3600, t_end = 21*3600;
     t_beg = t_from; t_end = t_to;
     std::vector<std::tuple<int, int, int> > queries;
     uint64_t sum = 0, n_ok = 0;
@@ -112,15 +119,16 @@ int main (int argc, char **argv) {
         int t = t_beg + rand() % (t_end - t_beg);
         // 13890 -> 19202 at 10130
         //PB ferm trans. : src = 13890; dst = 19202; t = 10130;
-        int arr1 = rpt.earliest_arrival_time(src, dst, t);
-        int arr2 = csa.earliest_arrival_time(src, dst, t, false, true);
+        int arr1 = rpt.earliest_arrival_time(src, dst, t, false, true, chg, km);
+        //int arr1 = rpt.earliest_walk_pareto(src, dst, t);
+        int arr2 = csa.earliest_arrival_time(src, dst, t, false, true, chg, km);
         if (arr1 != arr2 && n_err++ < 10) {
             std::cerr <<" csa diff : "<< src <<" -> "<< dst <<" at "<< t
                       <<" : "<< arr1 <<", "<< arr2 <<"\n"; 
         }
         assert(arr1 <= arr2);
         if (arr2 < ttbl.t_max) { ++n_ok; }
-        if (arr1 < ttbl.t_max && arr2 < ttbl.t_max) {
+        if (true || (arr1 < ttbl.t_max && arr2 < ttbl.t_max)) {
             sum += arr2 - arr1;
             queries.push_back(std::make_tuple(src, dst, t));
         }
@@ -128,7 +136,7 @@ int main (int argc, char **argv) {
     main_log.cerr(t) <<"random query success rate : "
                      << (n_q*100/n_try) <<"% for "<< n_try <<" queries\n";
     std::cerr << n_ok <<" rpt==csa, E[eat_csa - eat_rpt] = "<< (sum/n_q) <<"\n";
-    // go
+    // go Pareto
     sum = 0, n_ok = 0;
     t = main_log.lap();
     for (auto q : queries) {
@@ -136,8 +144,29 @@ int main (int argc, char **argv) {
         int dst = std::get<1>(q);
         int t = std::get<2>(q);
         assert(t <= t_end);
-        int arr = rpt.earliest_arrival_time(src, dst, t /*, 4*/);
-        assert(arr < ttbl.t_max);
+        //int arr = rpt.earliest_arrival_time(src, dst, t, hub, trf, chg, km);
+        int arr = rpt.earliest_walk_pareto(src, dst, t, hub, trf, chg, km);
+        //assert(arr < ttbl.t_max);
+        if (arr < ttbl.t_max) {
+            sum += arr - t;
+            ++n_ok;
+        }
+    }
+    main_log.cerr(t) << n_q << " queries done, avg_time = "
+                     << (sum / n_ok)
+                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
+    t = main_log.lap();
+
+    // go Raptor
+    t = main_log.lap();
+    sum = 0, n_ok = 0;
+    for (auto q : queries) {
+        int src = std::get<0>(q);
+        int dst = std::get<1>(q);
+        int t = std::get<2>(q);
+        assert(t <= t_end);
+        int arr = rpt.earliest_arrival_time(src, dst, t, hub, trf, chg, km);
+        //assert(arr < ttbl.t_max);
         if (arr < ttbl.t_max) {
             sum += arr - t;
             ++n_ok;
@@ -150,18 +179,22 @@ int main (int argc, char **argv) {
 
     // go CSA
     t = main_log.lap();
-    sum = 0;
+    sum = 0, n_ok = 0;
     for (auto q : queries) {
         int src = std::get<0>(q);
         int dst = std::get<1>(q);
         int t = std::get<2>(q);
         assert(t <= t_end);
-        int arr = csa.earliest_arrival_time(src, dst, t, false, true);
-        assert(arr < ttbl.t_max);
-        sum += arr - t;        
+        int arr = csa.earliest_arrival_time(src, dst, t, hub, trf, chg, km);
+        //assert(arr < ttbl.t_max);
+        if (arr < ttbl.t_max) {
+            sum += arr - t;
+            ++n_ok;
+        }
     }
     main_log.cerr(t) << n_q << " queries done, avg_time = "
-                     << (sum / queries.size()) <<"\n";
+                     << (sum / n_ok)
+                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
     t = main_log.lap();
 
 

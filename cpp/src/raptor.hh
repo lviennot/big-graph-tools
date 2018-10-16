@@ -9,6 +9,7 @@
 #include "timetable.hh"
 #include "traversal.hh"
 #include "connection_scan.hh"
+#include "pareto.hh"
 
 class raptor {
 private:
@@ -24,33 +25,12 @@ private:
 
     const int not_stop_index = -1;
 
-    /*
-    struct parent_info {
-        S stop;
-        T wait_time;
-        T trip_time;
-        T walk_time;
-        T eat; // arrival time with the parent
-        int ntrips;
-
-        parent_info() {}
-
-        parent_info(S s, T wait, T trp, T wlk, T e, int k)
-            : stop(s), wait_time(wait), trip_time(trp), walk_time(wlk),
-              eat(e), ntrips(k) {}
-
-        parent_info(const parent_info &par, T wlk) // through transfer of wlk
-            : stop(par.stop), wait_time(par.wait_time),
-              trip_time(par.trip_time), walk_time(par.walk_time + wlk),
-              eat(par.eat + wlk), ntrips(par.ntrips) {}
-
-        parent_info(S s, T wait_s, T dep_s, T arr, int k) // through trip
-            : stop(s), wait_time(wait_s), trip_time(arr - dep_s), walk_time(0),
-              eat(arr), ntrips(k) {}
-    };
-    */
+    typedef pareto<T> pset;
+    typedef pset::point point;
     
     std::vector<T> st_eat, h_eat; // earliest arrival time at station, hub
+    std::vector<pset> all_pareto, incr_pareto, tmp_pareto,
+        dst_pareto; //eat vs walking time
     //std::vector<T> eat; // earliest arrival time at stop
     std::vector<std::vector<S> > parent; // not_stop_index for src
     std::vector<ST> n_trips; // number of trips for current eat
@@ -71,6 +51,8 @@ public:
         : ttbl(tt),
           csa(tt),
           st_eat(tt.n_st), h_eat(tt.n_h), n_trips(tt.n_h),
+          all_pareto(tt.n_h), incr_pareto(tt.n_h),
+          tmp_pareto(tt.n_s), dst_pareto(ntrips_max + 1),
           //eat(tt.n_s)),
           station_has_improved(tt.n_st, false),
           hub_has_improved(tt.n_h, false),
@@ -142,7 +124,8 @@ public:
                             const bool use_hubs = true,
                             const bool use_transfers = false,
                             const T min_chg_time = 60,
-                            const int k_max = ntrips_max) {
+                            const int k_max = ntrips_max,
+                            const bool earliest_only = true) {
 
         assert(k_max <= ntrips_max);
         
@@ -162,13 +145,12 @@ public:
         for (int i = 0; i < ttbl.n_h; ++i) { n_trips[i] = ntrips_max + 1000; }
         /*
         improved_stations.clear();
-        for (byte &b : station_has_improved) { b = false; }
-        for (byte &b : stop_has_improved) { b = false; }
+        for (int i = 0; i < ttbl.n_st; ++i) { station_has_improved[i] = false; }
+        for (int i = 0; i < ttbl.n_s; ++i) { stop_has_improved[i] = false; }
         improved_routes.clear();
-        for (int &i : route_has_improved_from) { i = not_stop_index; }
-        for (int &i : route_has_improved_to) { i = not_stop_index; }
+        for (int i = 0; i < ttbl.n_r; ++i)
+            { route_has_improved_from[i] = not_stop_index; }
         */
-
         // update helper (first phase)
         auto reach_station_trip = [this, dst, dbg, in_st_dbg](ST st, T t, R r,
                                                            S par, int k) {
@@ -264,12 +246,13 @@ public:
         }
 
         if (use_hubs) {
-            st_eat[dst] = 1 + csa.earliest_arrival_time(src, dst, t_dep,
-                                                        false, true,
-                                                        min_chg_time, k_max);
-            if (st_eat[dst] > ttbl.t_max) st_eat[dst] = ttbl.t_max;
-            /*
-            */
+            /* Only ok for pure arrival time (not pareto set with k): */
+            if (earliest_only){
+                st_eat[dst] = 1 + csa.earliest_arrival_time(src, dst, t_dep,
+                                                            false, true,
+                                                            min_chg_time,k_max);
+                if (st_eat[dst] > ttbl.t_max) st_eat[dst] = ttbl.t_max;
+            }
             for (auto e : ttbl.outhubs[src]) {
                 if (t_dep + e.wgt >= st_eat[dst]) break; // target prun
                 h_eat[e.dst] = t_dep + e.wgt;
@@ -298,8 +281,8 @@ public:
             }
         }
 
- 
-        for (int k = 1; k <= k_max; ++k) {
+        int k = 1;
+        for (; k <= k_max; ++k) {
 
              if (dbg) {
                 for (int i = 0; i < ttbl.n_st; ++i) {
@@ -480,7 +463,299 @@ public:
             }
         }
 
+        /*if (k > k_max) {
+            for (const R r : improved_routes) {
+                const std::vector<S> &stops = ttbl.route_stops[r];
+                assert(route_has_improved_from[r] != not_stop_index);
+                for (int x=route_has_improved_from[r];
+                     x <= route_has_improved_to[r]; ++x) {
+                    stop_has_improved[stops[x]] = false;
+                }
+                route_has_improved_from[r] = not_stop_index;
+            }
+            improved_routes.clear();
+            for (ST st : improved_stations) {
+                station_has_improved[st] = false;
+                station_improved_through[st] = ttbl.n_r;
+            }
+            improved_stations.clear();
+            }*/
+
+        if (k_max != ntrips_max) std::cout <<"k "<< k <<"\n";
+        
         return st_eat[dst];
+    }
+
+    // still return earliest arrival time
+    T earliest_walk_pareto(const ST src, const ST dst, const T t_dep,
+                            const bool use_hubs = true,
+                            const bool use_transfers = false,
+                            const T min_chg_time = 60,
+                            const int k_max = ntrips_max) {
+
+        assert(k_max <= ntrips_max);
+
+        for (int i = 0; i < ttbl.n_h; ++i) { all_pareto[i].clear(); }
+        for (int i = 0; i < ttbl.n_st; ++i) { incr_pareto[i].clear(); }
+        for (int i = 0; i < ttbl.n_s; ++i) { tmp_pareto[i].clear(); }
+        for (int i = 0; i <= k_max; ++i) { dst_pareto[i].clear(); }
+
+        auto reach_station_trip = [this, dst](ST st, T t, T w) {
+            if ((! all_pareto[dst].dominates(t, w)) // target prun
+                && all_pareto[st].add(t, w)) {
+                assert(incr_pareto[st].add(t, w));
+                if ( ! station_has_improved[st]) {
+                    improved_stations.push_back(st);
+                    station_has_improved[st] = true;
+                }
+            }
+        };
+
+        auto reach_station_walk = [this, dst, t_dep](ST st, T t, T w,
+                                              bool self_walk=false){
+            if (st < ttbl.n_st
+                && (! all_pareto[dst].dominates(t, w)) // target prun
+                && (self_walk || all_pareto[st].add(t, w))) {
+                for (S u : ttbl.station_stops[st]) {
+                    //std::cerr << st <<" "<< u <<" : "<< t <<","<< w <<" : "<<;
+                    //tmp_pareto[u].print(std::cerr);
+                    if (tmp_pareto[u].add(t, w)) {
+                        R r = ttbl.stop_route[u].first;
+                        //assert(tmp_pareto[u].add(t, w));
+                        stop_has_improved[u] = true;
+                        int i = ttbl.stop_route[u].second;
+                        int i_prev = route_has_improved_from[r];
+                        if (i_prev == not_stop_index) {
+                            improved_routes.push_back(r);
+                            route_has_improved_from[r] = i;
+                            route_has_improved_to[r] = i;
+                        } else {
+                            if (i < i_prev) route_has_improved_from[r] = i;
+                            if (i > route_has_improved_to[r])
+                                route_has_improved_to[r] = i;
+                        }
+                    }
+                }
+            }
+        };
+
+        reach_station_walk(src, t_dep, 0);
+
+        if (use_transfers) {
+            for (auto f : transfers[src]) {
+                reach_station_walk(f.dst, t_dep + f.wgt, f.wgt);
+            }
+        }
+        if (use_hubs) {
+            for (auto e : ttbl.outhubs[src]) {
+                incr_pareto[e.dst].add(t_dep + e.wgt, e.wgt);
+            }
+            for (auto f : rev_inhubs[dst]) {
+                assert(incr_pareto[f.dst].pts.size() <= 1);
+                for (auto p : incr_pareto[f.dst].pts) {
+                    all_pareto[dst].add(p.x+f.wgt, p.y+f.wgt);
+                }
+            }
+            for (auto e : ttbl.outhubs[src]) {
+                incr_pareto[e.dst].clear();
+                for (auto f : ttbl.inhubs[e.dst]) {
+                    reach_station_walk(f.dst, t_dep + e.wgt+f.wgt, e.wgt+f.wgt);
+                }
+            }
+        }
+
+        dst_pareto[0] = all_pareto[dst];
+
+        int k = 1;
+        for (; k <= k_max; ++k) {
+
+            // first phase: follow trips from improved routes
+            if (improved_routes.size() == 0) { break; }
+            for (const R r : improved_routes) {
+                const std::vector<std::vector<std::pair<T,T> > > &trips
+                    = ttbl.trips_of[r];
+                const std::vector<S> &stops = ttbl.route_stops[r];
+                int x_end = stops.size();
+                int y_end = trips.size();
+                int y = y_end;
+                while (route_has_improved_from[r] != not_stop_index) {
+                    assert(route_has_improved_from[r] >= 0
+                           && route_has_improved_from[r] < stops.size());
+                    int x_beg = route_has_improved_from[r];
+                    S fst = stops[x_beg];
+                    route_has_improved_from[r] = not_stop_index;
+                    const std::vector<point> &pts = tmp_pareto[fst].pts;
+                    //std::cerr <<"route "<< r <<" at "<< fst <<","<< x_beg
+                    //          <<" "<< pts.size() <<" pts\n"; 
+                    assert(pts.size() > 0);
+                    if (y < y_end) {
+                        T lst = pts[pts.size() - 1].x;
+                        if (ttbl.stop_departures[fst][y] < lst + min_chg_time) {
+                            y = y_end;
+                        } else {
+                            ++y; // so that y < y_prev bellow
+                        }
+                    }
+                    for (int i = pts.size() - 1; i >= 0; --i) {
+                        T arr = pts[i].x, wlk = pts[i].y;
+                        int y_prev = y;
+                        while (y-1 >= 0
+                               && ttbl.stop_departures[fst][y-1]
+                                  >= arr + min_chg_time) {
+                            --y;
+                        }
+                        if (y < y_prev) { // improve arrival times along trip
+                            for (int x = x_beg + 1; x < x_end; ++x) {
+                                S u = stops[x];
+                                arr = trips[y][x].first;
+                                ST st = ttbl.stop_station[u];
+                                reach_station_trip(st, arr, wlk);
+                                if (stop_has_improved[u]) {
+                                    tmp_pareto[u].del_dominated(arr, wlk);
+                                    if (tmp_pareto[u].pts.size() == 0) {
+                                        stop_has_improved[u] = false;
+                                        if (route_has_improved_from[r] == x) {
+                                            route_has_improved_from[r] =
+                                                not_stop_index;
+                                        }
+                                    } else {
+                                        if (route_has_improved_from[r]
+                                              == not_stop_index) {
+                                            route_has_improved_from[r] = x;
+                                        }
+                                        if (tmp_pareto[u]
+                                            .dominates(arr - min_chg_time,
+                                                       wlk)) {
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        } else if (y == y_end) {
+                            for (int x = x_beg + 1;
+                                 x <= route_has_improved_to[r]; ++x) {
+                                S u = stops[x];
+                                ST st = ttbl.stop_station[u];
+                                if (stop_has_improved[u]) {
+                                    route_has_improved_from[r] = x;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    tmp_pareto[fst].clear();
+                    stop_has_improved[fst] = false;
+                }
+                assert(route_has_improved_from[r] == not_stop_index);
+            }
+            improved_routes.clear();
+
+            // second phase: walk from improved stations
+            if (improved_stations.size() == 0) { break; }
+            if (use_transfers) {
+                for (ST st : improved_stations) {
+                    for (auto p : incr_pareto[st].pts) {
+                        reach_station_walk(st, p.x, p.y, true);
+                        for (auto f : transfers[st]) {
+                            if (f.dst != st) {
+                                reach_station_walk(f.dst, p.x+f.wgt, p.y+f.wgt);
+                            }
+                        }
+                    }
+                }
+            }
+            if (use_hubs) {
+                for (ST st : improved_stations) {
+                    if ( ! hub_has_improved[st]) {
+                        hub_has_improved[st] = true;
+                        improved_hubs.push_back(st);
+                    }
+                    for (auto p : incr_pareto[st].pts) {
+                        for (auto e : ttbl.outhubs[st]) {
+                            if (all_pareto[dst].dominates(p.x+e.wgt, p.y+e.wgt))
+                                break; // target prun
+                            if (e.dst != st
+                                && all_pareto[e.dst].add(p.x+e.wgt, p.y+e.wgt)){
+                                if ( ! hub_has_improved[e.dst]) {
+                                    hub_has_improved[e.dst] = true;
+                                    improved_hubs.push_back(e.dst);
+                                }
+                                incr_pareto[e.dst].add(p.x+e.wgt, p.y+e.wgt);
+                            }
+                        }
+                    }
+                    station_has_improved[st] = false;
+                }
+                improved_stations.clear();
+                for (ST h : improved_hubs) {
+                    for (auto p : incr_pareto[h].pts) {
+                        if (h < ttbl.n_st) {
+                            reach_station_walk(h, p.x, p.y, true);
+                        }
+                        for (auto f : ttbl.inhubs[h]) {
+                            if (all_pareto[dst].dominates(p.x+f.wgt, p.y+f.wgt))
+                                break; // target prun
+                            if (f.dst != h) {
+                                reach_station_walk(f.dst, p.x+f.wgt, p.y+f.wgt);
+                            }
+                        }
+                    }
+                    hub_has_improved[h] = false;
+                    incr_pareto[h].clear();
+                }
+                improved_hubs.clear();
+            } else {
+                for (ST st : improved_stations) {
+                    station_has_improved[st] = false;
+                    incr_pareto[st].clear();
+                }
+                improved_stations.clear();
+            }
+            
+            dst_pareto[k] = all_pareto[dst];
+        }
+        if (k <= k_max) dst_pareto[k] = all_pareto[dst];
+
+        if (k > k_max) {
+            for (const R r : improved_routes) {
+                const std::vector<S> &stops = ttbl.route_stops[r];
+                assert(route_has_improved_from[r] != not_stop_index);
+                for (int x=route_has_improved_from[r];
+                     x <= route_has_improved_to[r]; ++x) {
+                    if (stop_has_improved[stops[x]]) {
+                        stop_has_improved[stops[x]] = false;
+                        tmp_pareto[stops[x]].clear();
+                    }
+                }
+                route_has_improved_from[r] = not_stop_index;
+            }
+            improved_routes.clear();
+            for (ST st : improved_stations) {
+                station_has_improved[st] = false;
+                incr_pareto[st].clear();
+            }
+            improved_stations.clear();
+        }
+ 
+        size_t ps_size = 0, m_size = 0;
+        for (int i = 0; i <= std::min(k, k_max); ++i) {
+            m_size = std::max(m_size, dst_pareto[i].pts.size());
+            if (i == 0) { ps_size += dst_pareto[i].pts.size(); }
+            else {
+                for (auto p : dst_pareto[i].pts) {
+                    if ( ! dst_pareto[i-1].dominates(p.x, p.y)) ++ps_size;
+                }
+            }
+        }
+        std::cout <<"k "<< k <<"\n";
+        std::cout <<"ps_size "<< ps_size <<"\n";
+        std::cout <<"m_size "<< m_size <<"\n";
+
+        if (all_pareto[dst].pts.size() > 0) {
+            return all_pareto[dst].pts[0].x;
+        } else {
+            return ttbl.t_max;
+        }
     }
 
     T test(int n_q, T t_beg, T t_end) {
