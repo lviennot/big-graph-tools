@@ -48,7 +48,7 @@ private:
     graph transfers, rev_inhubs;
 
     const int not_stop_index = -1;
-    static const int ntrips_max = 32;
+    static const int ntrips_max = 48;
     
 public:
     connection_scan(const timetable tt)
@@ -134,7 +134,8 @@ public:
                             const bool use_hubs = true,
                             const bool use_transfers = false,
                             const T min_chg_time = 60,
-                            const int ntr_max = ntrips_max) {
+                            const int ntr_max = ntrips_max // FIXME : works only when the number of trips remains <= ntr_max
+                            ) {
 
         assert(ntr_max <= ntrips_max);
 
@@ -154,13 +155,14 @@ public:
         for (int tr = 0; tr < n_tr; ++tr) { trip_ntrips[tr] = n_tr; }
         //scanned_trips.clear();
 
-        // Track for debug :
+        /* Track for debug :
         bool dbg = false;
         std::vector<ST> st_dbg = {14797, 2457, 9008, 9009};
         R rt1 = 341;
         auto in_st_dbg = [&st_dbg](ST st) -> bool {
             return std::find(st_dbg.begin(), st_dbg.end(), st) != st_dbg.end();
         };
+        */
 
         st_eat[src] = t_dep;
         S s_src = ttbl.station_stops[src][0];
@@ -169,29 +171,15 @@ public:
             parent[k][src] = s_src;
         }
 
-        auto update_eat = [this, dbg, in_st_dbg](ST st, T t, S par,
-                                                 ST by_st, int k,
-                                                 bool by_trip = false) {
+        auto update_eat = [this](ST st, T t, S par, ST by_st, int k,
+                                 bool by_trip = false) {
             if (t < st_eat[st]) {
-                if (dbg && in_st_dbg(st)) {
-                    std::cerr << (by_trip ? "trip to " : "walk to ") << st
-                    <<" at "<< t <<" from "<< par
-                    <<" of "<< (par != -1 ? ttbl.stop_station[par] : -1)
-                    <<" by "<< by_st
-                    <<"\n";
-                }
                 st_eat[st] = t;
                 n_trips[st] = k;
                 parent[k][st] = par;
             }
         };
         
-        if (dbg) std::cerr <<"\n\nCSA{ : "<< src <<" at "<< st_eat[src]
-                           <<" to "<< dst <<" at "<< st_eat[dst]
-                           <<" init. "<< n_trips[src] <<","
-                           << n_trips[dst] <<" trips\n";
-        /* */
-
         if (use_transfers) {
             for (auto transf : transfers[src]) {
                 if (st_eat[src] + transf.wgt < st_eat[transf.dst]) {
@@ -212,7 +200,6 @@ public:
                 update_eat(dst, st_eat[e.dst] + e.wgt,
                            s_src, e.dst, 0);
             }
-            if (dbg) std::cerr<< dst <<" dest at "<< st_eat[dst] <<"\n";
             for (auto e : ttbl.outhubs[src]) {
                 ST h = e.dst;
                 for (auto f : ttbl.inhubs[h]) {
@@ -222,19 +209,6 @@ public:
                 }
             }
         }
-        if (dbg) {
-            // bug: 2637 -26586-> 377 : 2637 -26269-> 6276 -> 377
-            std::cerr<<"--------------\n";
-            std::cerr<< "2637="<< ttbl.hub_id[2637]
-                     << " -26586="<< ttbl.hub_id[26586]
-                     << "-> 377="<< ttbl.hub_id[377]
-                     << " 6276="<< ttbl.hub_id[6276]
-                     <<"\n";
-            //for (auto e : rev_inhubs[377])
-            //    std::cerr<< e.dst <<" -> "<< 377 <<" "<< e.wgt <<"s\n";
-            //std::cerr<<"--------------\n";
-        }
-
         
         assert(t_dep < conn_at.size()); // seconds in a day
         assert(conn[conn_at[t_dep]].dep >= t_dep);
@@ -267,35 +241,17 @@ public:
                     || (n_trips[st_from]+1 < trip_ntrips[c.trip]
                         // TODO : if ==, check walking time
                         && st_eat[st_from] + min_chg_time<= c.dep)) {
-                    if (dbg && (trip_route[c.trip].first == rt1
-                                || in_st_dbg(st_to)))
-                        std::cerr << "board "<< c.trip
-                                  <<" of route "<< trip_route[c.trip].first
-                                  <<" in "<< st_from <<" "<< c.index
-                                  <<" at "<< c.dep
-                                  <<" >= "<< st_eat[st_from]
-                                  <<" ntrips=" << n_trips[st_from]
-                                  <<" chtm="<< min_chg_time
-                                  <<"\n";
-                    /* */
                     trip_board[c.trip] = c.from;
                     trip_ntrips[c.trip] = n_trips[st_from] + 1;
                 }
                 //}
                 if (trip_board[c.trip] != not_stop_index
                     && trip_ntrips[c.trip] <= ntr_max
-                    && c.arr < st_eat[st_to]) {
-                    if (dbg && (trip_route[c.trip].first == rt1
-                                || in_st_dbg(st_to)))
-                        std::cerr << "trip "<< c.trip
-                                  <<" of route "<< trip_route[c.trip].first
-                                  <<"="<< ttbl.stop_route[c.to].first
-                                  <<" in "<< st_from <<" "<< c.index
-                                  <<" at "<< c.dep
-                                  <<" >= "<< st_eat[st_from]
-                                  <<" ntrips=" << n_trips[st_from]
-                                  <<" chtm="<< min_chg_time
-                                  <<"\n";
+                    && (c.arr < st_eat[st_to]
+                        //|| trip_ntrips[c.trip] < n_trips[st_to]
+                        // FIXME : what if c.arr > st_eat[st_to] ?
+                        // need eat for each ntrips
+                        )) {
                     update_eat(st_to, c.arr,
                                trip_board[c.trip],
                                ttbl.stop_station[c.from],
@@ -337,13 +293,6 @@ public:
 
         //for (TR tr : scanned_trips) { trip_boarded[tr] = false; }
 
-        if (dbg) std::cerr <<"}CSA : "<< src <<" at "<< t_dep <<" -> "<< dst
-                           <<" eat="<< st_eat[dst]
-                           <<" in "<< n_trips[dst] <<" trips\n\n";
-
-        if (dbg && n_trips[dst] <= ntrips_max)
-            print_journey(dst, use_hubs, use_transfers, min_chg_time);
-        
         return st_eat[dst];
     }
 

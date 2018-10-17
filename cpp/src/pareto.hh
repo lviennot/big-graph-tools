@@ -33,7 +33,7 @@ public:
     
     std::vector<point> pts;
 
-    pareto(size_t cap=32) { pts.reserve(cap); }
+    pareto(size_t cap=48) { pts.reserve(cap); }
 
     pareto(const pareto &p) : pts(p.pts) {}
 
@@ -50,7 +50,7 @@ public:
         auto pos = pts_end;
         point tmp(x, y);
         size_t n_dom = 0;
-        for (auto p = pts.begin() ; p != pts_end ; ++p) {
+        for (auto p = pts.begin(); p != pts_end; ++p) {
             if (p->x <= x && p->y <= y) return false; // dominated
             if (p->x < x) continue;
             // x <= p->x
@@ -131,10 +131,12 @@ public:
     }
 
     bool dominates(W x, W y) {
-        return std::any_of(pts.begin(), pts.end(),
-                           [x,y](const point p) {
-                               return p.x <= x && p.y <= y;
-                           });
+        auto pts_end = pts.end();
+        for (auto p = pts.begin(); p != pts_end; ++p) {
+            if (p->x <= x && p->y <= y) return true; // dominated
+            if (p->x >= x) return false; // (y < p->y if x == p->x)
+        }
+        return false;
     }
 
     bool contains(W x, W y) {
@@ -145,6 +147,78 @@ public:
     }
 
 };
+
+
+template<typename W>
+
+class pareto_approx : public pareto<W> {
+    // Approximated 2D Pareto set with at most [n_pts] points
+
+public:
+
+    typedef typename pareto<W>::point point;
+    
+    const float approx;
+
+    pareto_approx(float appr_ratio, size_t cap=32)
+        : pareto<W>::pareto(cap), approx(appr_ratio) {
+        assert(appr_ratio >= 1.);
+    }
+
+    bool add(W x, W y) {
+        auto pts_beg = pareto<W>::pts.begin(), pts_end = pareto<W>::pts.end();
+        auto prev = pts_beg, p = pts_beg;
+        for ( ; p != pts_end; prev = p++) {
+            if (p->x <= x && p->y <= y) return false; // dominated
+            if (p->x < x) continue;
+            // x <= p->x
+            if (prev->x < x && p->y <= y
+                && p->x <= approx * prev->x
+                && prev->y <= approx * p-> y) return false; // approx-dominated
+            break;
+        }
+        // insert point
+        point tmp(x, y);
+        bool inserted = false;
+        if (prev != pts_beg) {
+            auto pprev = --prev;
+            if (x <= approx * pprev->x && pprev->y <= approx * y) {
+                // prev is approx-dom
+                std::swap(*prev, tmp);
+                inserted = true;
+            }
+        }
+        auto del_pos = p;
+        if (p != pts_end) {
+            auto pp = ++p;
+            if (pp != pts_end && pp->x <= approx * x && y <= approx * pp->y) {
+                // p is approx-dom
+                if ( ! inserted) {
+                    std::swap(*p, tmp);
+                    inserted = true;
+                }
+            }
+        }
+        return true;
+    }
+    
+    bool dominates(W x, W y) {
+        auto pts_beg = pareto<W>::pts.begin(), pts_end = pareto<W>::pts.end();
+        auto prev = pts_beg;
+        for (auto p = prev; p != pts_end; prev = p++) {
+            if (p->x <= x && p->y <= y) return true; // dominated
+            if (p->x < x) continue;
+            // x <= p->x
+            if (prev->x < x && p->y <= y
+                && p->x <= approx * prev->x
+                && prev->y <= approx * p-> y) return true; // approx-dominated
+            return false;
+        }
+        return false;
+    }
+
+};
+
 
 namespace unit {
 

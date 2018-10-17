@@ -88,6 +88,8 @@ int main (int argc, char **argv) {
     t = main_log.lap();
     //exit(0);
 
+    //std::cerr <<"first rands: "<< rand() <<" "<< rand() <<" "<< rand() <<"\n";
+
     // --------------- earliest arrival time through Raptor ---------
     raptor rpt(ttbl);
     main_log.cerr(t) << "raptor initialized\n";
@@ -103,7 +105,7 @@ int main (int argc, char **argv) {
 
     //bool hub=false, trf=true;
     bool hub=true, trf=false;
-    int chg=60, km=32;
+    int chg=60, km=48;
 
     // make n_q successful queries
     t = main_log.lap();
@@ -152,7 +154,7 @@ int main (int argc, char **argv) {
             ++n_ok;
         }
     }
-    main_log.cerr(t) << n_q << " queries done, avg_time = "
+    main_log.cerr(t) << n_q << " PHLRaptor queries done, avg_time = "
                      << (sum / n_ok)
                      << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
     t = main_log.lap();
@@ -172,12 +174,54 @@ int main (int argc, char **argv) {
             ++n_ok;
         }
     }
-    main_log.cerr(t) << n_q << " queries done, avg_time = "
+    main_log.cerr(t) << n_q << " HLRaptor queries done, avg_time = "
                      << (sum / n_ok)
                      << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
     t = main_log.lap();
 
+    // go restricted walk
+    t = main_log.lap();
+    sum = 0, n_ok = 0;
+    for (auto q : queries) {
+        int src = std::get<0>(q);
+        int dst = std::get<1>(q);
+        int t = std::get<2>(q);
+        assert(t <= t_end);
+        int arr = rpt.earliest_arrival_time(src, dst, t, false, true, chg, km);
+        //assert(arr < ttbl.t_max);
+        if (arr < ttbl.t_max) {
+            sum += arr - t;
+            ++n_ok;
+        }
+    }
+    main_log.cerr(t) << n_q << " Raptor queries done, avg_time = "
+                     << (sum / n_ok)
+                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
+    t = main_log.lap();
+
+
     // go CSA
+    t = main_log.lap();
+    sum = 0, n_ok = 0;
+    for (auto q : queries) {
+        int src = std::get<0>(q);
+        int dst = std::get<1>(q);
+        int t = std::get<2>(q);
+        assert(t <= t_end);
+        int arr = csa.earliest_arrival_time(src, dst, t, false, true, chg, km);
+        //assert(arr < ttbl.t_max);
+        if (arr < ttbl.t_max) {
+            sum += arr - t;
+            ++n_ok;
+        }
+    }
+    main_log.cerr(t) << n_q << " CSA queries done, avg_time = "
+                     << (sum / n_ok)
+                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
+    t = main_log.lap();
+
+
+    // go HLCSA
     t = main_log.lap();
     sum = 0, n_ok = 0;
     for (auto q : queries) {
@@ -192,7 +236,7 @@ int main (int argc, char **argv) {
             ++n_ok;
         }
     }
-    main_log.cerr(t) << n_q << " queries done, avg_time = "
+    main_log.cerr(t) << n_q << " HLCSA queries done, avg_time = "
                      << (sum / n_ok)
                      << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
     t = main_log.lap();

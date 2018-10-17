@@ -21,7 +21,7 @@ private:
     typedef timetable::R R;
     typedef timetable::T T;
 
-    static const int ntrips_max = 32; // max number of trips in a journey
+    static const int ntrips_max = 48; // max number of trips in a journey
 
     const int not_stop_index = -1;
 
@@ -125,17 +125,18 @@ public:
                             const bool use_transfers = false,
                             const T min_chg_time = 60,
                             const int k_max = ntrips_max,
-                            const bool earliest_only = true) {
+                            const bool earliest_only = false) {
 
         assert(k_max <= ntrips_max);
         
-        // Track for debug :
+        /* Track for debug :
         bool dbg = false;
         std::vector<ST> st_dbg = {};
         R rt1 = -1;
         auto in_st_dbg = [&st_dbg](ST st) -> bool {
             return std::find(st_dbg.begin(), st_dbg.end(), st) != st_dbg.end();
         };
+        */
 
         // initialize
         //for (T &t : eat) { t = ttbl.t_max; }
@@ -152,16 +153,10 @@ public:
             { route_has_improved_from[i] = not_stop_index; }
         */
         // update helper (first phase)
-        auto reach_station_trip = [this, dst, dbg, in_st_dbg](ST st, T t, R r,
-                                                           S par, int k) {
+        auto reach_station_trip = [this, dst](ST st, T t, R r, S par, int k) {
             if (t < st_eat[st]
                 && t < st_eat[dst] // target pruning
                 ) {
-                if (dbg && in_st_dbg(st))
-                    std::cerr <<"by_trip: "<< st
-                              <<" at "<< t <<" thrg="<< r
-                              <<"\n";
-                /* */
                 st_eat[st] = t;
                 n_trips[st] = k;
                 assert(par != not_stop_index);
@@ -175,20 +170,11 @@ public:
         };
 
         // update helper (second phase)
-        auto reach_station_walk = [this, dst, dbg, in_st_dbg, rt1](ST st, T t,
-                                                                S par, int k) {
+        auto reach_station_walk = [this, dst](ST st, T t, S par, int k) {
             if ((t < st_eat[st]
                  || (t == st_eat[st] && station_has_improved[st]))
                 && t < st_eat[dst] // target pruning
                 ) {
-                if(dbg && in_st_dbg(st))
-                    std::cerr <<"by_walk:"<< st <<" at "<< t
-                              <<" vs "<< st_eat[st]
-                              << ", "<< st_eat[dst]
-                              <<" has_impr="<< station_has_improved[st]
-                              <<" thrg="<< station_improved_through[st]
-                              <<"\n";
-                /* */
                 if (t < st_eat[dst])
                     station_has_improved[st] = false; // improved through transfer, not trip
                 st_eat[st] = t;
@@ -205,13 +191,6 @@ public:
                         stop_has_improved[u] = true;
                         int i = ttbl.stop_route[u].second;
                         int i_prev = route_has_improved_from[r];
-                        if (dbg && (in_st_dbg(st) || r == rt1))
-                            std::cerr <<"add route "<< r
-                                      <<" at "<< u <<" of "<< st <<" i="<< i
-                                      <<" iprev=" << i_prev
-                                      <<" at "<< st_eat[st]
-                                      <<"\n";
-                        /* */
                         if (i_prev == not_stop_index) {
                             improved_routes.push_back(r);
                             route_has_improved_from[r] = i;
@@ -226,16 +205,10 @@ public:
             }
         };
 
+        assert(improved_routes.empty());
+        assert(improved_stations.empty());
 
-        
         reach_station_walk(src, t_dep, not_stop_index, 0);
-
-        if (dbg) {
-            T arr_csa = csa.earliest_arrival_time(src, dst, t_dep,
-                                                  use_hubs, use_transfers,
-                                                  min_chg_time, k_max);
-        }
-
 
         if (use_transfers) {
             for (auto f : transfers[src]) {
@@ -268,7 +241,6 @@ public:
                 n_trips[dst] = 0;
                 parent[0][dst] = not_stop_index;
             }
-            if (dbg) std::cerr<< dst <<" dest at "<< st_eat[dst] <<"\n";
             for (auto e : ttbl.outhubs[src]) {
                 ST h = e.dst;
                 for (auto f : ttbl.inhubs[h]) {
@@ -284,28 +256,8 @@ public:
         int k = 1;
         for (; k <= k_max; ++k) {
 
-             if (dbg) {
-                for (int i = 0; i < ttbl.n_st; ++i) {
-                    if (st_eat[i] > csa.st_eat[i] && k-1 >= csa.n_trips[i]
-                        && csa.st_eat[i] < st_eat[dst]) {
-                        std::cerr << src <<" -> "<< dst << " at "<< t_dep
-                                  <<" : "<< " k-1="<< k-1
-                                  <<", pb2 at "<< i
-                                  <<" : "<< st_eat[i]
-                                  <<", "<< csa.st_eat[i]
-                                  <<" ntrips="<< csa.n_trips[i]
-                                  <<"\n";
-                    }
-                    assert(st_eat[i] <= csa.st_eat[i] || k-1 < csa.n_trips[i]
-                           || csa.st_eat[i] >= st_eat[dst]);
-                }
-            }
-            /*  */
-
             // first phase
-            if (dbg) std::cerr <<"-- k="<< k <<" eat="<< st_eat[dst]
-                               <<" "<< improved_routes.size() <<" routes\n";
-            if (improved_routes.size() == 0) {
+            if (improved_routes.empty()) {
                 //std::cerr << k <<" rounds (no route improved)\n";
                 //std::cout <<"max_k "<< k <<"\n";
                 break;
@@ -316,8 +268,6 @@ public:
                 const std::vector<S> &stops = ttbl.route_stops[r];
                 int x = route_has_improved_from[r];
                 int x_end = stops.size();
-                if (dbg && r == rt1) std::cerr <<"route "<< r
-                                         <<" x="<< x <<" xend="<< x_end <<"\n";
                 assert(x >= 0);
                 assert(x < x_end);
                 int x_last = route_has_improved_to[r];
@@ -332,12 +282,6 @@ public:
                     ST st = ttbl.stop_station[u];
                     T eat = st_eat[st];
                     T arr;
-                    if (dbg && r == rt1 && in_st_dbg(st))
-                        std::cerr << u <<" of "<< st
-                                  <<" at "<< (y < y_end ? trips[y][x].first : ttbl.t_max)
-                                  <<" prev "<< (y > 0 ? ttbl.stop_departures[u][y-1] : -1)
-                                  <<" vs "<< eat + min_chg_time
-                                  <<"\n";
                     if (y < y_end && (arr = trips[y][x].first) < eat) {
                         reach_station_trip(st, arr, r, par, k);
                         // if (stop_has_improved[u])
@@ -347,7 +291,7 @@ public:
                         /* */
                         if (stop_has_improved[u]) {
                             par = u; // TODO: only if improves walk time
-                            /* dichotomic search does not seem to help
+                            /* dichotomic search does not seem to help 
                             if (y == y_end) {
                                 auto lower = std::lower_bound(ttbl.stop_departures[u].begin(), ttbl.stop_departures[u].end(), std::max(eat, eat + min_chg_time));
                                 y = std::distance(ttbl.stop_departures[u].begin(), lower);
@@ -368,7 +312,7 @@ public:
 
             // second phase
             //std::cerr <<"k="<< k <<" "<< improved_stations.size() <<" stations\n";
-            if (improved_stations.size() == 0) {
+            if (improved_stations.empty()) {
                 //std::cerr << k <<" rounds (no station improved)\n";
                 //std::cout <<"max_k "<< k <<"\n";
                 break;
@@ -376,19 +320,8 @@ public:
             if (use_transfers) {
                 for (ST st : improved_stations) {
                     reach_station_walk(st, st_eat[st], parent[k][st], k);
-                    if (dbg && in_st_dbg(st))
-                        std::cerr <<"improved "<< st<<" at "<<st_eat[st] <<"\n";
-                    /* */
                     for (auto transf : transfers[st]) {
                         if (transf.dst != st) {
-                            if (dbg && in_st_dbg(transf.dst))
-                                std::cerr <<"transf to " << transf.dst
-                                          <<" : "<< transf.wgt
-                                          <<" from "<< st <<" at "<< st_eat[st]
-                                          <<" : "<< st_eat[st] + transf.wgt
-                                          <<" <? "<< st_eat[transf.dst]
-                                          <<"\n";
-                            /* */
                             reach_station_walk(transf.dst,
                                                st_eat[st] + transf.wgt,
                                                parent[k][st], k);
@@ -398,16 +331,8 @@ public:
             }
             if (use_hubs) {
                 for (ST st : improved_stations) {
-                    if (dbg && in_st_dbg(st))
-                        std::cerr << ttbl.outhubs.degree(st)
-                            <<" hubs of "<< st <<" at "<< st_eat[st]
-                                  <<" id="<< ttbl.hub_id[st] <<"\n";
                     for (auto e : ttbl.outhubs[st]) {
                         ST h = e.dst;
-                        if (dbg && in_st_dbg(st))
-                            std::cerr <<"  h="<< h <<" at "
-                                      << st_eat[st] + e.wgt
-                                      <<" vs "<< h_eat[h] <<"\n";
                         if (st_eat[st] + e.wgt >= st_eat[dst]) break; // targpr
                         if (st_eat[st] + e.wgt < h_eat[h]) {
                             h_eat[h] = st_eat[st] + e.wgt;
@@ -463,7 +388,7 @@ public:
             }
         }
 
-        /*if (k > k_max) {
+        if (k > k_max) {
             for (const R r : improved_routes) {
                 const std::vector<S> &stops = ttbl.route_stops[r];
                 assert(route_has_improved_from[r] != not_stop_index);
@@ -479,10 +404,8 @@ public:
                 station_improved_through[st] = ttbl.n_r;
             }
             improved_stations.clear();
-            }*/
+        }
 
-        if (k_max != ntrips_max) std::cout <<"k "<< k <<"\n";
-        
         return st_eat[dst];
     }
 
@@ -539,6 +462,9 @@ public:
             }
         };
 
+        assert(improved_routes.empty());
+        assert(improved_stations.empty());
+
         reach_station_walk(src, t_dep, 0);
 
         if (use_transfers) {
@@ -570,7 +496,7 @@ public:
         for (; k <= k_max; ++k) {
 
             // first phase: follow trips from improved routes
-            if (improved_routes.size() == 0) { break; }
+            if (improved_routes.empty()) { break; }
             for (const R r : improved_routes) {
                 const std::vector<std::vector<std::pair<T,T> > > &trips
                     = ttbl.trips_of[r];
@@ -585,8 +511,6 @@ public:
                     S fst = stops[x_beg];
                     route_has_improved_from[r] = not_stop_index;
                     const std::vector<point> &pts = tmp_pareto[fst].pts;
-                    //std::cerr <<"route "<< r <<" at "<< fst <<","<< x_beg
-                    //          <<" "<< pts.size() <<" pts\n"; 
                     assert(pts.size() > 0);
                     if (y < y_end) {
                         T lst = pts[pts.size() - 1].x;
@@ -651,7 +575,7 @@ public:
             improved_routes.clear();
 
             // second phase: walk from improved stations
-            if (improved_stations.size() == 0) { break; }
+            if (improved_stations.empty()) { break; }
             if (use_transfers) {
                 for (ST st : improved_stations) {
                     for (auto p : incr_pareto[st].pts) {
@@ -747,9 +671,11 @@ public:
                 }
             }
         }
+        /*
         std::cout <<"k "<< k <<"\n";
         std::cout <<"ps_size "<< ps_size <<"\n";
         std::cout <<"m_size "<< m_size <<"\n";
+        */
 
         if (all_pareto[dst].pts.size() > 0) {
             return all_pareto[dst].pts[0].x;
