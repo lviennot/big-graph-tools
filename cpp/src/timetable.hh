@@ -37,9 +37,8 @@ public:
     std::vector<std::vector<T> > stop_arrivals; // arrival time
     std::vector<std::vector<S> > route_stops; // stop sequence of a route
     std::vector<std::vector<std::vector<std::pair<T,T> > > > trips_of; // trips of a route : arrival/departure times at each stop
-    graph transfers, inhubs, outhubs;
+    graph transfers, inhubs, outhubs, lowerboundgraph;
     
-    std::map<std::vector<id>, R> stations_to_route;
     std::map<id, ST> id_to_station, id_to_hub;
 
 public:
@@ -77,7 +76,8 @@ public:
 
     timetable(std::string stop_times,
               std::string inhubsfile, std::string outhubsfile,
-              std::string transfersfile, bool symmetrize = true)
+              std::string transfersfile, bool symmetrize = true,
+              std::string walkingfile="", T t_from=0, T t_to=0)
         : n_st(0), n_s(0), n_r(0), n_h(0)
     {
         auto trip_seq = trips_sequences_oneday(stop_times);
@@ -155,6 +155,60 @@ public:
         std::cerr << outhubs.n() <<" out-hubs of avg size "
                   << (outhubs.m() / n_st) <<"\n";
         std::cerr << n_h <<" hubs\n";
+
+        // lower-bound graph
+        if (walkingfile != "") {
+            size_t n_lb = n_h;
+            std::map<id, ST> id;
+            auto get_node = [this, &n_lb, &id](std::string u) -> ST {
+                auto search = id_to_hub.find(u);
+                if (search != id_to_hub.end()) {
+                    return search->second;
+                } // else
+                search = id.find(u);
+                if (search != id.end()) {
+                    return search->second;
+                } // else
+                id[u] = n_lb;
+                return n_lb++;
+            };
+
+            std::vector<graph::edge> edg;
+            auto rows = timetable::read_tuples(walkingfile, 3);
+            edg.reserve(rows.size() + 100000);
+            for (auto r : rows) {
+                ST u = get_node(r[0]), v = get_node(r[1]);
+                T delay = std::stoi(r[2]);
+                edg.push_back(graph::edge(u, v, delay));
+            }
+
+            // fastest trip for each connection
+            if (t_to == 0) t_to = t_max;
+            for (R r = 0; r < n_r; ++r) {
+                const std::vector<std::vector<std::pair<T,T> > > &trips
+                    = trips_of[r];
+                const std::vector<S> &stops = route_stops[r];
+                for (int x = 1; x < stops.size(); ++x) {
+                    ST u = stop_station[stops[x-1]];
+                    ST v = stop_station[stops[x]];
+                    T t = t_max;
+                    for (int y = 0; y < trips.size(); ++y) {
+                        if (trips[y][x-1].second >= t_from
+                            && trips[y][x].first <= t_to) {
+                            T dt = trips[y][x].first - trips[y][x-1].second;
+                            t = std::min(t, dt);
+                        }
+                    }
+                    if (t < t_max) {
+                        edg.push_back(graph::edge(u, v, t));
+                    }
+                }
+            }
+
+            lowerboundgraph.set_edges(edg);
+            std::cerr <<"lower-bound graph "<< lowerboundgraph.n()
+                      <<" nodes, "<< lowerboundgraph.m() <<" edges\n";
+        }
     }
 
 private:
@@ -168,8 +222,9 @@ private:
                 station_stops.push_back(std::vector<S>{});
             }
         };
-        
-        int n_overpass = 0;
+
+        std::vector<std::vector<std::tuple<T, T, id, int> > > inter;
+        inter.reserve(trip_seq.size());
         for (auto seq : trip_seq) {
             auto s = seq.second;
             // sort trip according to stop_sequence:
@@ -191,17 +246,57 @@ private:
                     assert(std::get<1>(a) <= std::get<0>(b));
                 }
             }
+            inter.push_back(s);
+        }
+        // sort trips
+        std::sort(inter.begin(), inter.end(),
+                  [](const std::vector<std::tuple<T, T, id, int> > &a,
+                     const std::vector<std::tuple<T, T, id, int> > &b) {
+                      return std::get<1>(a.at(0)) < std::get<1>(b.at(0));
+                  });
+        // construct timetables
+        std::map<std::vector<id>, R> stations_to_route, stations_to_route2;
+        int n_overpass = 0;
+        for (auto s : inter) {
             // partition trips into routes with same stop sequence
-            std::vector<id> stations(s.size());
+            std::vector<id> stations;
+            stations.reserve(s.size());
             for (int i = 0; i < s.size(); ++i) {
                 const std::tuple<T, T, id, int> &a = s[i];
-                stations[i] = std::get<2>(a);
+                stations.push_back(std::get<2>(a));
             }
             R rte = -1;
+            bool overpass = false, new_route = true;
             auto search = stations_to_route.find(stations);
-            if (search == stations_to_route.end()) {
+            if (search != stations_to_route.end()) {
+                new_route = false;
+                rte = search->second;
+                assert(route_stops[rte].size() == s.size());
+                const auto &prev = trips_of[rte].back();
+                assert(prev[0].second <= std::get<1>(s[0]));
+                for (int i = 0; i < s.size(); ++i) {
+                    T arr = std::get<0>(s[i]);
+                    T dep = std::get<1>(s[i]);
+                    if (arr < prev[i].first || dep < prev[i].second) {
+                        overpass = true;
+                        break;
+                    }
+                }
+            }
+            if (overpass) {
+                ++n_overpass;
+                new_route = true;
+                search = stations_to_route2.find(stations);
+                if (search != stations_to_route2.end()) {
+                    new_route = false;
+                    rte = search->second;
+                    assert(route_stops[rte].size() == s.size());
+                }
+            }
+            if (new_route) {
                 rte = n_r++;
-                stations_to_route[stations] = rte;
+                if (overpass) { stations_to_route2[stations] = rte; }
+                else { stations_to_route[stations] = rte; }
                 // create stations:
                 for (auto st : stations) {
                     create_station(st);
@@ -218,9 +313,6 @@ private:
                 }
                 route_stops.push_back(stops);
                 trips_of.push_back(std::vector<std::vector<std::pair<T,T> > >{});
-            } else {
-                rte = search->second;
-                assert(route_stops[rte].size() == s.size());
             }
             // create trip in route table:
             std::vector<std::pair<T,T> > trp{s.size()};
@@ -231,8 +323,10 @@ private:
             }
             trips_of[rte].push_back(trp);
         }
-        std::cerr << n_st <<" stations, "<< n_s <<" stops, "<< n_r <<" routes\n";
+        std::cerr << n_st <<" stations, "<< n_s <<" stops, "
+                  << n_r <<" routes (fixed "<< n_overpass <<" overpasses)\n";
 
+        n_overpass = 0;
         for(R rte = 0; rte < n_r; ++rte) {
             std::sort(trips_of[rte].begin(), trips_of[rte].end(),
                       [](const std::vector<std::pair<T,T> > &p,
@@ -455,6 +549,7 @@ public:
     read_tuples(const std::string filename, const size_t ncols) {
         std::vector<std::vector<std::string> > rows;
         FILE *in = filename != "-" ? fopen(filename.c_str(), "r") : stdin;
+        if (in == nullptr) return rows;
         char line[100000];
 
         for ( ; fgets(line, sizeof line, in) != NULL ; ) {

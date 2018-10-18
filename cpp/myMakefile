@@ -5,6 +5,13 @@ HDRS:=$(wildcard src/*.hh)
 main: test
 	gunzip -c ex/corse-osm-t.gr.gz | ./test
 
+london:
+	make -f myMakefile raptor.o && ./raptor.o 0 86400 ~/dev/pt/Public-Transit-Data/London
+
+london_lb:
+	make -f myMakefile tt_lb_graph.o && (./tt_lb_graph.o 0 86400 ~/dev/pt/Public-Transit-Data/London | gzip -c > ~/dev/pt/Public-Transit-Data/London/lower_bound.gr.gz)
+	gunzip -c ~/dev/pt/Public-Transit-Data/London/lower_bound.gr.gz ~/dev/pt/Public-Transit-Data/London/walking_and_transfers.gr.gz | ./hltrans hubs - | gzip -c > ~/dev/pt/Public-Transit-Data/London/lower_bound-hubsall.gr.gz
+
 switzerland: switzerland.hltrans
 
 %.hltrans: ex/%.gr.gz

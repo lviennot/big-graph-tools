@@ -11,6 +11,11 @@
 #include "connection_scan.hh"
 #include "pareto.hh"
 
+#include "mgraph.hh"
+#include "traversal.hh"
+#include "pruned_landmark_labeling.hh"
+
+
 class raptor {
 private:
     const timetable ttbl;
@@ -45,6 +50,8 @@ private:
     // transitively closed transfers:
     typedef timetable::graph graph;
     graph transfers, rev_inhubs;
+    //pruned_landmark_labeling<graph> pll_lb;
+
 
 public:
     raptor(const timetable tt)
@@ -60,6 +67,7 @@ public:
           stop_has_improved(tt.n_s, false),
           route_has_improved_from(tt.n_r),
           route_has_improved_to(tt.n_r)
+          //pll_lb(tt.lowerboundgraph)
     {
         for (R r = 0; r < ttbl.n_r; ++r) {
             route_has_improved_from[r] = not_stop_index;
@@ -118,6 +126,10 @@ public:
                 assert(dist(u, e.dst) <= e.wgt);
             }
         }
+
+        // ---------------- lower bound graph ---------------------        
+        //pll_lb.print_stats(std::cerr);
+        
     }
 
     T earliest_arrival_time(const ST src, const ST dst, const T t_dep,
@@ -156,6 +168,7 @@ public:
         auto reach_station_trip = [this, dst](ST st, T t, R r, S par, int k) {
             if (t < st_eat[st]
                 && t < st_eat[dst] // target pruning
+                // bad idea: && t + pll_lb.distance(st, dst) <= st_eat[dst]
                 ) {
                 st_eat[st] = t;
                 n_trips[st] = k;
@@ -174,6 +187,7 @@ public:
             if ((t < st_eat[st]
                  || (t == st_eat[st] && station_has_improved[st]))
                 && t < st_eat[dst] // target pruning
+                // bad idea: && t + pll_lb.distance(st, dst) <= st_eat[dst]
                 ) {
                 if (t < st_eat[dst])
                     station_has_improved[st] = false; // improved through transfer, not trip
@@ -245,7 +259,9 @@ public:
                 ST h = e.dst;
                 for (auto f : ttbl.inhubs[h]) {
                     if (h_eat[h] + f.wgt >= st_eat[dst]) break; // target prun
-                    if (f.dst < ttbl.n_st) {
+                    if (f.dst < ttbl.n_st
+      // bad idea: && h_eat[h] + f.wgt + pll_lb.distance(h, dst) <= st_eat[dst]
+                        ) {
                         reach_station_walk(f.dst, h_eat[h] + f.wgt,
                                            not_stop_index, 0);
                     }
