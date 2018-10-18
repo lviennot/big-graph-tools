@@ -114,7 +114,7 @@ int main (int argc, char **argv) {
 
     // make n_q successful queries
     t = main_log.lap();
-    int n_q = 100, t_beg = 5*3600, t_end = 21*3600;
+    int n_q = 1000, t_beg = 5*3600, t_end = 21*3600;
     t_beg = t_from; t_end = t_to;
     std::vector<std::tuple<int, int, int> > queries;
     uint64_t sum = 0, n_ok = 0;
