@@ -284,13 +284,14 @@ private:
                 }
             }
             if (overpass) {
-                ++n_overpass;
-                new_route = true;
                 search = stations_to_route2.find(stations);
                 if (search != stations_to_route2.end()) {
                     new_route = false;
                     rte = search->second;
                     assert(route_stops[rte].size() == s.size());
+                } else {
+                    new_route = true;
+                    ++n_overpass;
                 }
             }
             if (new_route) {
@@ -324,7 +325,7 @@ private:
             trips_of[rte].push_back(trp);
         }
         std::cerr << n_st <<" stations, "<< n_s <<" stops, "
-                  << n_r <<" routes (fixed "<< n_overpass <<" overpasses)\n";
+                  << n_r <<" routes ("<< n_overpass <<" for overpasses)\n";
 
         n_overpass = 0;
         for(R rte = 0; rte < n_r; ++rte) {
