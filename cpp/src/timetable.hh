@@ -366,7 +366,10 @@ private:
                 }
             }
         }
-        std::cerr << n_overpass <<" overpasses\n";
+        if (n_overpass > 0) {
+            std::cerr <<"WARNING: timetable modified to fix "
+                      << n_overpass <<" overpasses\n";
+        }
 
         stop_departures.reserve(n_s);
         stop_arrivals.reserve(n_s);
