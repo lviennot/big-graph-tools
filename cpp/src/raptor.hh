@@ -19,7 +19,6 @@
 class raptor {
 private:
     const timetable ttbl;
-    connection_scan csa;
 
     typedef timetable::ST ST;
     typedef timetable::S S;
@@ -56,7 +55,6 @@ private:
 public:
     raptor(const timetable tt)
         : ttbl(tt),
-          csa(tt),
           st_eat(tt.n_st), h_eat(tt.n_h), n_trips(tt.n_h),
           all_pareto(tt.n_h), incr_pareto(tt.n_h),
           tmp_pareto(tt.n_s), dst_pareto(ntrips_max + 1),
@@ -137,7 +135,7 @@ public:
                             const bool use_transfers = false,
                             const T min_chg_time = 60,
                             const int k_max = ntrips_max,
-                            const bool earliest_only = false) {
+                            connection_scan *earliest_only_csa = nullptr) {
 
         assert(k_max <= ntrips_max);
         
@@ -234,10 +232,10 @@ public:
 
         if (use_hubs) {
             /* Only ok for pure arrival time (not pareto set with k): */
-            if (earliest_only){
-                st_eat[dst] = 1 + csa.earliest_arrival_time(src, dst, t_dep,
-                                                            false, true,
-                                                            min_chg_time,k_max);
+            if (earliest_only_csa != nullptr){
+                st_eat[dst] = 1 + earliest_only_csa
+                    ->earliest_arrival_time(src, dst, t_dep,
+                                            false, true, min_chg_time,k_max);
                 if (st_eat[dst] > ttbl.t_max) st_eat[dst] = ttbl.t_max;
             }
             for (auto e : ttbl.outhubs[src]) {

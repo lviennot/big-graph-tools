@@ -95,14 +95,18 @@ int main (int argc, char **argv) {
     raptor rpt(ttbl);
     main_log.cerr(t) << "raptor initialized\n";
     t = main_log.lap();
+    /*
     std::cerr << rpt.earliest_arrival_time(2637, 967, 0) <<"\n";
     std::cerr << rpt.earliest_arrival_time(2543, 2549, 0) <<"\n";
     std::cerr << rpt.earliest_arrival_time(ttbl.id_to_station["3750014"],
                                            ttbl.id_to_station["5709848"],
                                            0) <<"\n";
+    */
     connection_scan csa(ttbl);
     main_log.cerr(t) << "csa initialized\n";
     t = main_log.lap();
+
+    std::cerr << dir <<"\n";
 
     //bool hub=false, trf=true;
     bool hub=true, trf=false;
@@ -160,7 +164,7 @@ int main (int argc, char **argv) {
                      << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
     t = main_log.lap();
 
-    // go Raptor
+    // go HLRaptor
     t = main_log.lap();
     sum = 0, n_ok = 0;
     for (auto q : queries) {

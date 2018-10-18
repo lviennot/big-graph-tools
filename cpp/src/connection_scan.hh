@@ -52,10 +52,10 @@ private:
     
 public:
     connection_scan(const timetable tt)
-        : ttbl(tt),
+        : ttbl(tt), n_tr(0),
           st_eat(tt.n_h), h_eat(tt.n_h),
           //eat(tt.n_s)),
-          trip_ntrips(), n_trips(tt.n_h)
+          n_trips(tt.n_h)
     {
         parent.reserve(ntrips_max + 1);
         for (int i = 0; i <= ntrips_max; ++i) {
