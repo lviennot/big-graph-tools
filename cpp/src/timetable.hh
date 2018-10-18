@@ -368,7 +368,7 @@ private:
         }
         if (n_overpass > 0) {
             std::cerr <<"WARNING: timetable modified to fix "
-                      << n_overpass <<" overpasses\n";
+                      << n_overpass <<" remaining overpasses\n";
         }
 
         stop_departures.reserve(n_s);
