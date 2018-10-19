@@ -198,7 +198,7 @@ public:
                         R r = ttbl.stop_route[u].first;
                         if (station_has_improved[st]
                             && r == station_improved_through[st]) {
-                            //continue;
+                            continue;
                         }
                         stop_has_improved[u] = true;
                         int i = ttbl.stop_route[u].second;
@@ -301,8 +301,8 @@ public:
                         // if (stop_has_improved[u])
                         // just improved again, ignore previous improve
                     } else {
-                        //if (x > x_last && k > 1) break;
-                        /* */
+                        // OK when min_chg_time=0 :
+                        //if (arr >= eat && x > x_last && k > 1) break;
                         if (stop_has_improved[u]) {
                             par = u; // TODO: only if improves walk time
                             /* dichotomic search does not seem to help 
@@ -499,6 +499,8 @@ public:
             for (auto e : ttbl.outhubs[src]) {
                 incr_pareto[e.dst].clear();
                 for (auto f : ttbl.inhubs[e.dst]) {
+                    if (all_pareto[dst].dominates(t_dep + e.wgt+f.wgt,
+                                                e.wgt+f.wgt)) break; // targpr
                     reach_station_walk(f.dst, t_dep + e.wgt+f.wgt, e.wgt+f.wgt);
                 }
             }
