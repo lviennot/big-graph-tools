@@ -70,6 +70,10 @@ int main (int argc, char **argv) {
     // ------------------------- dijkstra -----------------------
     traversal<graph> trav(n);
     int u = 0, v = n - 1;
+    if (argc == 4) {
+        u = vi[argv[2]] - 1;
+        v = vi[argv[3]] - 1;
+    }
     //int u = vi["1"]-1, v = vi["2"]-1;
     trav.dijkstra(g, u);
     std::cerr << trav.nvis() <<" nodes visited\n";
@@ -155,7 +159,7 @@ int main (int argc, char **argv) {
     
     // ------------------------- hub labeling -----------------------
     std::vector<int> sel, sel_scc;
-    if (argc > 2) {
+    if (argc == 3) {
         FILE *in = (std::string("-") != argv[2]) ? fopen(argv[2], "r") : stdin;
         char u[1024];
         for ( ; fscanf(in, " %s \n", u) >= 1 ; ) {

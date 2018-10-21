@@ -60,12 +60,27 @@ gtfs2graph: src/gtfs2graph.cc $(HDRS)
 headers:
 	@echo $(HDRS)
 
+%.stop_paris:
+	lab () { while [ $$# -gt 0 ]; do st=$$1; stop=`grep -e ",$${st}[^0-9]" labels/stop_label.csv | sed -e 's/,.*//'`; echo -n "$$st is "; grep -e "^$$stop," gtfs/stops.txt; shift; done } ;\
+	points () { lab $$* | cut -d , -f5,6 | awk '{printf "&p=%s", $$1}'; echo ""; } ;\
+	pts () { lab $$*; points $$*; } ;\
+	cd ../../../../dev/pt/Public-Transit-Data/Paris ; pts $*
+
+three: raptor.o
+	echo $$HOSTNAME
+	./raptor.o 0 86400 London
+	./raptor.o 0 86400 Paris
+	./raptor.o 0 86400 Switzerland
+
 clean:
 	rm -f test *~ src/*~
 	rm -fr test.dSYM
 
 %.rioc: scp
 	ssh rioc.inria.fr 'cd graph/cpp; oarsub -p mem\>=50 -l nodes=1/core=1,walltime=24:00:00 "make -f myMakefile $*"; sleep 5; cat OAR.*.stdout'
+
+%.riocclear: scp
+	ssh rioc.inria.fr 'cd graph/cpp; rm -f OAR.*; oarsub -p mem\>=50 -l nodes=1/core=1,walltime=24:00:00 "make -f myMakefile $*"; sleep 5; cat OAR.*.stdout'
 
 scp:
 	scp -r myMakefile src rioc.inria.fr:graph/cpp/

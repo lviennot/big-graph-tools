@@ -38,6 +38,8 @@ int main (int argc, char **argv) {
 
     int t_from = std::stoi(argv[1]), t_to = std::stoi(argv[2]);
 
+    std::cerr <<"first rands: "<< rand() <<" "<< rand() <<" "<< rand() <<"\n";
+
     /* ------------------------- load csv ----------------------
     auto rows = timetable::read_csv(argv[1], 2, "service_id", "tuesday");
     for (auto r : rows) {
@@ -89,8 +91,6 @@ int main (int argc, char **argv) {
     t = main_log.lap();
     //exit(0);
 
-    //std::cerr <<"first rands: "<< rand() <<" "<< rand() <<" "<< rand() <<"\n";
-
     // --------------- earliest arrival time through Raptor ---------
     raptor rpt(ttbl);
     main_log.cerr(t) << "raptor initialized\n";
@@ -114,7 +114,7 @@ int main (int argc, char **argv) {
 
     // make n_q successful queries
     t = main_log.lap();
-    int n_q = 100, t_beg = 5*3600, t_end = 21*3600;
+    int n_q = 1000, t_beg = 5*3600, t_end = 21*3600;
     t_beg = t_from; t_end = t_to;
     std::vector<std::tuple<int, int, int> > queries;
     uint64_t sum = 0, n_ok = 0;
@@ -133,9 +133,9 @@ int main (int argc, char **argv) {
             std::cerr <<" csa diff : "<< src <<" -> "<< dst <<" at "<< t
                       <<" : "<< arr1 <<", "<< arr2 <<"\n"; 
         }
-        assert(arr1 <= arr2);
+        //assert(arr1 <= arr2);
         if (arr2 < ttbl.t_max) { ++n_ok; }
-        if (true || (arr1 < ttbl.t_max && arr2 < ttbl.t_max)) {
+        if (arr1 < ttbl.t_max || (arr1 < ttbl.t_max && arr2 < ttbl.t_max)) {
             sum += arr2 - arr1;
             queries.push_back(std::make_tuple(src, dst, t));
         }
@@ -143,6 +143,7 @@ int main (int argc, char **argv) {
     main_log.cerr(t) <<"random query success rate : "
                      << (n_q*100/n_try) <<"% for "<< n_try <<" queries\n";
     std::cerr << n_ok <<" rpt==csa, E[eat_csa - eat_rpt] = "<< (sum/n_q) <<"\n";
+    
     // go Pareto
     sum = 0, n_ok = 0;
     t = main_log.lap();
@@ -163,7 +164,7 @@ int main (int argc, char **argv) {
                      << (sum / n_ok)
                      << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
     t = main_log.lap();
-
+    
     // go HLRaptor
     t = main_log.lap();
     sum = 0, n_ok = 0;
