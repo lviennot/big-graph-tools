@@ -114,7 +114,7 @@ int main (int argc, char **argv) {
 
     // make n_q successful queries
     t = main_log.lap();
-    int n_q = 1000, t_beg = 5*3600, t_end = 21*3600;
+    int n_q = 100, t_beg = 5*3600, t_end = 21*3600;
     t_beg = t_from; t_end = t_to;
     std::vector<std::tuple<int, int, int> > queries;
     uint64_t sum = 0, n_ok = 0;
@@ -143,7 +143,7 @@ int main (int argc, char **argv) {
     main_log.cerr(t) <<"random query success rate : "
                      << (n_q*100/n_try) <<"% for "<< n_try <<" queries\n";
     std::cerr << n_ok <<" rpt==csa, E[eat_csa - eat_rpt] = "<< (sum/n_q) <<"\n";
-    
+    /*
     // go Pareto
     sum = 0, n_ok = 0;
     t = main_log.lap();
@@ -164,7 +164,7 @@ int main (int argc, char **argv) {
                      << (sum / n_ok)
                      << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
     t = main_log.lap();
-    
+    */
     // go HLRaptor
     t = main_log.lap();
     sum = 0, n_ok = 0;

@@ -33,6 +33,7 @@ private:
     typedef pset::point point;
     
     std::vector<T> st_eat; // earliest arrival time at station, hub
+    std::vector<T> stop_prev_dep; // dep time of previous trip at a stop
     std::vector<pset> all_pareto, incr_pareto, tmp_pareto,
         dst_pareto; //eat vs walking time
     //std::vector<T> eat; // earliest arrival time at stop
@@ -74,7 +75,7 @@ private:
 public:
     raptor(const timetable tt)
         : ttbl(tt),
-          st_eat(tt.n_h), n_trips(tt.n_h),
+          st_eat(tt.n_h), n_trips(tt.n_h), stop_prev_dep(tt.n_s),
           all_pareto(tt.n_h), incr_pareto(tt.n_h),
           tmp_pareto(tt.n_s), dst_pareto(ntrips_max + 1),
           //eat(tt.n_s)),
@@ -204,6 +205,7 @@ public:
         // initialize
         for (int i = 0; i < ttbl.n_h; ++i) { st_eat[i] = ttbl.t_max; }
         for (int i = 0; i < ttbl.n_h; ++i) { n_trips[i] = ntrips_max + 1000; }
+        for (int i = 0; i < ttbl.n_s; ++i) { stop_prev_dep[i] = ttbl.t_max; }
 
         // update helper (first phase)
         auto reach_station_trip = [this, dst](ST st, T t, T dt,
@@ -220,16 +222,16 @@ public:
         };
 
         // update helper (second phase)
-        auto reach_station_walk = [this, dst](ST st, T t, T dt, S par, int k,
-                                              bool self_walk = false) {
+        auto reach_station_walk =
+            [this, dst, min_chg_time](ST st, T t, T dt, S par, int k,
+                                      bool self_walk = false) {
             if (t < st_eat[dst] // target pruning
                 // bad idea: && t + pll_lb.distance(st, dst) <= st_eat[dst]
                 && (self_walk || update_eat_walk(st, t, dt, par, k))
                 ) {
                 if (st >= ttbl.n_st) return;
                 for (S u : ttbl.station_stops[st]) {
-                    //if (t <= prev_trip_dep) {
-                    //    eat[u] = t;
+                    if (t + min_chg_time <= stop_prev_dep[u]) {
                         R r = ttbl.stop_route[u].first;
                         /*FIXME: if (station_has_improved[st]
                             && parent[k][st].trip
@@ -248,7 +250,7 @@ public:
                             if (i > route_has_improved_to[r])
                                 route_has_improved_to[r] = i;
                         }
-                        //}
+                    }
                 }
             }
         };
@@ -341,6 +343,10 @@ public:
                                 par_eat = eat_improved; // FIXME to measure waiting time: ttbl.stop_departures[u][y];
                             }
                         }
+                    }
+                    if (y < y_end) {
+                        if (y == 0) stop_prev_dep[u] = 0;
+                        else stop_prev_dep[u] = trips[y-1][x].second;
                     }
                     stop_has_improved[u] = false;
                 }
