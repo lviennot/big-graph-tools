@@ -135,7 +135,7 @@ int main (int argc, char **argv) {
         }
         //assert(arr1 <= arr2);
         if (arr2 < ttbl.t_max) { ++n_ok; }
-        if (arr1 < ttbl.t_max || (arr1 < ttbl.t_max && arr2 < ttbl.t_max)) {
+        if (true || (arr1 < ttbl.t_max && arr2 < ttbl.t_max)) {
             sum += arr2 - arr1;
             queries.push_back(std::make_tuple(src, dst, t));
         }
