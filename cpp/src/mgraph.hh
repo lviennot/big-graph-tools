@@ -7,6 +7,7 @@
 #include <vector>
 #include <utility>
 #include <functional>
+#include <algorithm>
 
 #include "edge.hh"
 
@@ -132,6 +133,30 @@ public:
         }
         return false;
     }
+
+    bool is_symmetric(bool same_weight = true) const {
+        return asymmetry(same_weight) == 0;
+    }
+
+    size_t asymmetry(bool same_weight) const {
+        mgraph r = reverse();
+        size_t n_asym = 0;
+        for (V u = 0; u < n_; ++u) {
+            for (size_t e = sdeg[u]; e < sdeg[u+1]; ++e) {
+                W w = adj[e].wgt;
+                V v = adj[e].dst;
+                if ( (! r.has_edge(u, v))
+                     || (same_weight && r.edge_weight(u, v) != w) ) {
+                    /*std::cerr <<"... "<< v <<","<< u <<"\n";
+                    if (r.has_edge(u, v))
+                    std::cerr << w <<" "<< r.edge_weight(u, v) <<"\n"; */
+                    ++n_asym;
+                } 
+            }
+        }
+        return n_asym;
+    }
+    
     
     // asserts sorted adjacency lists (use g.reverse() or g.reverse().reverse())
     W edge_weight(V u, V v) {
@@ -151,7 +176,7 @@ public:
     static W aggregate_sum (W w, W x) { return w + x; }
     
     mgraph simple(std::function<W(W,W)> aggr = aggregate_min) const {
-        mgraph g(reverse().reverse()); // sort adjacencies
+        mgraph g = reverse().reverse(); // sort adjacencies
         std::vector<edge> edg;
         edg.reserve(m_);
         for (V u = 0; u < g.n_; ++u) {
@@ -177,6 +202,15 @@ public:
             }
         }
         return edg;
+    }
+
+    void sort_neighbors_by_weight() {
+        for (V u = 0; u < n_; ++u) {
+            size_t e = sdeg[u], f = sdeg[u+1];
+            std::sort(adj+e, adj+f, [](const edge_head &e, const edge_head &f) {
+                    return e.wgt < f.wgt;
+                });
+        }
     }
 
     std::pair<mgraph<V, W, nb_not_vertex>, std::vector<V> >

@@ -19,44 +19,70 @@ void usage_exit (char **argv) {
     };
     
     std::cerr <<"Usage: "<< argv[0]
-              <<" day date gtfs_dir\n";
+              <<" [options] gtfs_dir\n"
+              <<"Options:\n"
+              << paragraph("  -fast : at most 10 queries")
+              <<"\n";
     exit(1);
 }
 
+std::vector<std::string> get_args(int argc, char **argv) {
+    std::vector<std::string> a;
+    for (int i = 0; i < argc; ++i) {
+        std::string s(argv[i]);
+        if (s[0] == '-') continue; // option
+        a.push_back(s);
+    }
+    return a;
+}
+
+bool has_opt(int argc, char **argv, std::string opt) {
+    assert(opt[0] == '-');
+    for (int i = 0; i < argc; ++i) {
+        std::string s(argv[i]);
+        if (s == opt) return true;
+    }
+    return false;
+}
+
+std::string get_opt(int argc, char **argv,
+                    std::string opt_prefix, std::string dft) {
+    int len = opt_prefix.size();
+    assert(opt_prefix[0] == '-'
+           && (opt_prefix[len-1] == '=' || opt_prefix[len-1] == ':'));
+    for (int i = 0; i < argc; ++i) {
+        std::string s(argv[i]);
+        if (s.size() >= len && s.substr(0, len) == opt_prefix) {
+            return s.substr(len);
+        }
+    }
+    return dft;
+}
 
 int main (int argc, char **argv) {
     logging main_log("--");
 
     // ------------------------ usage -------------------------
-    if (argc != 4) {
+    std::vector<std::string> args = get_args(argc, argv);
+    if (args.size() != 2) {
         usage_exit(argv);
     }
+    std::string dir{args[1]};
+    std::cerr <<"--------------- "<< dir <<" ---------------------\n";
+    dir += "/";
 
     // ------------------------ time -------------------------
     main_log.cerr() << "start\n";
     double t = main_log.lap();
 
-    int t_from = std::stoi(argv[1]), t_to = std::stoi(argv[2]);
+    //std::cerr <<"first rands: "<< rand() <<" "<< rand() <<" "<< rand() <<"\n";
 
-    std::cerr <<"first rands: "<< rand() <<" "<< rand() <<" "<< rand() <<"\n";
-
-    /* ------------------------- load csv ----------------------
-    auto rows = timetable::read_csv(argv[1], 2, "service_id", "tuesday");
-    for (auto r : rows) {
-        for (auto c : r) std::cout << c <<" ";
-        std::cout <<"\n";
-    }
-    main_log.cerr() << "csv\n";
-    t = main_log.lap();
-    */
 
     // ------------------------- load timetable ----------------------
-    std::string dir{argv[3]};
-    dir += "/";
     /*
-    timetable ttbl{argv[1], argv[2],
+    timetable ttbl{args[1], args[2],
             dir+"calendar.txt", dir+"calendar_dates.txt",
-            dir+"trips.txt", dir+"stop_times.txt", dir+"transfers.txt"};
+            dir+"trips.txt", dir+"stop_times.txt", dir+"transfers.txt", true};
     */
     timetable ttbl{dir+"stop_times.csv",
             dir+"in_hubs.gr", dir+"out_hubs.gr",
@@ -64,60 +90,56 @@ int main (int argc, char **argv) {
     //dir+"walking_and_transfers.gr", t_from, t_to};
     std::cerr << ttbl.n_r <<" routes, "<< ttbl.n_st <<" sations, "
               << ttbl.n_s <<" stops\n";
-    /*
-    int r = 43;
-    std::cerr <<"route "<< r <<" : ";
-    for (auto s : ttbl.route_stops[r]) {
-        std::cerr << s <<","<< ttbl.stop_station[s] <<" ";
-    }
-    std::cerr <<"\n";
-    int s = 19097;
-    std::cerr <<"departures at "<< s <<" : ";
-    for (int t : ttbl.stop_departures[s]) {
-        std::cerr << t <<" ";
-    }
-    std::cerr <<"\n";
-    int st = 116;
-    for (int u : ttbl.station_stops[st]) {
-        int r = ttbl.stop_route[u].first;
-        int i = ttbl.stop_route[u].second;
-        std::cerr <<"stop "<< u <<" in station "<< st
-                  <<" at pos "<< i <<" in route "<< r
-                  <<"\n";
-    }
-    std::cerr <<"\n";
-    */
     main_log.cerr(t) << "timetable\n";
     t = main_log.lap();
     //exit(0);
 
-    // --------------- earliest arrival time through Raptor ---------
+    // --------------- earliest arrival time through Raptor and CSA ---------
     raptor rpt(ttbl);
     main_log.cerr(t) << "raptor initialized\n";
     t = main_log.lap();
-    /*
-    std::cerr << rpt.earliest_arrival_time(2637, 967, 0) <<"\n";
-    std::cerr << rpt.earliest_arrival_time(2543, 2549, 0) <<"\n";
-    std::cerr << rpt.earliest_arrival_time(ttbl.id_to_station["3750014"],
-                                           ttbl.id_to_station["5709848"],
-                                           0) <<"\n";
-    */
+
+    timetable rev_ttbl(ttbl);
+    rev_ttbl.check();
+    rev_ttbl.reverse_time();
+    raptor rev_rpt(rev_ttbl);
+    main_log.cerr(t) << "rev raptor initialized\n";
+    t = main_log.lap();
+
     connection_scan csa(ttbl);
     main_log.cerr(t) << "csa initialized\n";
     t = main_log.lap();
 
-    std::cerr << dir <<"\n";
+    const bool hub=true, trf=false;
+    const int chg=0, km=48;
 
-    //bool hub=false, trf=true;
-    bool hub=true, trf=false;
-    int chg=60, km=48;
+    uint64_t sum = 0, n_ok = 0;
 
+
+    // ------------------ random queries -------------------
+    int n_q = 0;
+    std::vector<std::tuple<int, int, int> > queries;
+    {
+        auto rows = timetable::read_csv
+            (dir + get_opt(argc, argv, "-query-file=", "queries.csv"),
+             3, "source", "target", "time");
+        for (auto r : rows) {
+            if (has_opt(argc, argv, "-fast") && n_q >= 10) break;
+            int src = ttbl.id_to_station[r[0]];
+            int dst = ttbl.id_to_station[r[1]];
+            int t = std::stoi(r[2]);
+            queries.push_back(std::make_tuple(src, dst, t));
+            ++n_q;
+        }
+    }
+    main_log.cerr(t) << n_q << " queries\n";
+    t = main_log.lap();
+
+    /*
     // make n_q successful queries
     t = main_log.lap();
-    int n_q = 100, t_beg = 5*3600, t_end = 21*3600;
-    t_beg = t_from; t_end = t_to;
+    int n_q = 1000, t_beg = 0*3600, t_end = 24*3600;
     std::vector<std::tuple<int, int, int> > queries;
-    uint64_t sum = 0, n_ok = 0;
     int n_try = 0, n_err = 0;
     while (queries.size() < n_q) {
         ++n_try;
@@ -143,57 +165,56 @@ int main (int argc, char **argv) {
     main_log.cerr(t) <<"random query success rate : "
                      << (n_q*100/n_try) <<"% for "<< n_try <<" queries\n";
     std::cerr << n_ok <<" rpt==csa, E[eat_csa - eat_rpt] = "<< (sum/n_q) <<"\n";
-    /*
-    // go Pareto
-    sum = 0, n_ok = 0;
-    t = main_log.lap();
-    for (auto q : queries) {
-        int src = std::get<0>(q);
-        int dst = std::get<1>(q);
-        int t = std::get<2>(q);
-        assert(t <= t_end);
-        //int arr = rpt.earliest_arrival_time(src, dst, t, hub, trf, chg, km);
-        int arr = rpt.earliest_walk_pareto(src, dst, t, hub, trf, chg, km);
-        //assert(arr < ttbl.t_max);
-        if (arr < ttbl.t_max) {
-            sum += arr - t;
-            ++n_ok;
-        }
-    }
-    main_log.cerr(t) << n_q << " PHLRaptor queries done, avg_time = "
-                     << (sum / n_ok)
-                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
+
     t = main_log.lap();
     */
-    // go HLRaptor
-    t = main_log.lap();
-    sum = 0, n_ok = 0;
-    for (auto q : queries) {
-        int src = std::get<0>(q);
-        int dst = std::get<1>(q);
-        int t = std::get<2>(q);
-        assert(t <= t_end);
-        int arr = rpt.earliest_arrival_time(src, dst, t, hub, trf, chg, km);
-        //assert(arr < ttbl.t_max);
-        if (arr < ttbl.t_max) {
-            sum += arr - t;
-            ++n_ok;
-        }
-    }
-    main_log.cerr(t) << n_q << " HLRaptor queries done, avg_time = "
-                     << (sum / n_ok)
-                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
-    t = main_log.lap();
 
-    // go restricted walk
+
+    //* CHECK
+    n_ok = 0;
+    for (auto q : queries) {
+        int src = std::get<0>(q);
+        int dst = std::get<1>(q);
+        int t = std::get<2>(q);
+        if (has_opt(argc, argv, "-skip") && ttbl.station_id[src] != "4561")
+            continue; 
+        std::cerr << ttbl.station_id[src] <<","<< ttbl.station_id[dst]
+                  <<","<< t <<" ("<< n_ok <<")\n";
+        int arr1 = rpt.earliest_arrival_time(src, dst, t, false, true, chg, km);
+        int arr2 = csa.earliest_arrival_time(src, dst, t, false, true, chg, km);
+        if (arr1 != arr2) {
+            std::cerr <<"---------- \n";
+            rpt.print_journey(dst, std::cerr, -1, chg);
+            std::cerr <<"---------- \n";
+            csa.print_journey(dst, false, true, chg, std::cerr);
+            std::cerr <<"---------- \n";
+            std::cerr << arr1 <<" "<< arr2 <<"\n";
+        }
+        assert(arr1 == arr2);
+        int arrHL1 = rpt.earliest_arrival_time(src, dst, t, hub, trf, chg, km);
+        int arrHL2 = csa.earliest_arrival_time(src, dst, t, hub, trf, chg, km);
+        std::cerr << arrHL1 <<" "<< arrHL2 <<"\n";
+        assert(arrHL1 == arrHL2);
+        std::cout << ttbl.station_id[src] <<","<< ttbl.station_id[dst] <<","<< t
+                  <<","<< arr1 <<","<< arrHL1
+                  <<","<< rpt.walking_time(src, dst) <<"\n";
+        ++n_ok;
+    }
+    std::cout.flush();
+    main_log.cerr(t) << n_ok << " CHECK\n";
     t = main_log.lap();
+    // */
+
+    if (has_opt(argc, argv, "-exit")) exit(0);
+    
+    // go Raptor restricted walk
     sum = 0, n_ok = 0;
     for (auto q : queries) {
         int src = std::get<0>(q);
         int dst = std::get<1>(q);
         int t = std::get<2>(q);
-        assert(t <= t_end);
         int arr = rpt.earliest_arrival_time(src, dst, t, false, true, chg, km);
+        //std::cout << arr <<"\n";
         //assert(arr < ttbl.t_max);
         if (arr < ttbl.t_max) {
             sum += arr - t;
@@ -206,15 +227,35 @@ int main (int argc, char **argv) {
     t = main_log.lap();
 
 
-    // go CSA
-    t = main_log.lap();
+    // go HLRaptor
     sum = 0, n_ok = 0;
     for (auto q : queries) {
         int src = std::get<0>(q);
         int dst = std::get<1>(q);
         int t = std::get<2>(q);
-        assert(t <= t_end);
+        int arr = rpt.earliest_arrival_time(src, dst, t, hub, trf, chg, km);
+        //if (arr < ttbl.t_max) rpt.print_journey(dst);
+        //std::cout << src <<","<< dst <<","<< t <<" : "<< (arr - dep) <<"\n";
+        //std::cout << arr <<"\n";
+        //assert(arr < ttbl.t_max);
+        if (arr < ttbl.t_max) {
+            sum += arr - t;
+            ++n_ok;
+        }
+    }
+    main_log.cerr(t) << n_q << " HLRaptor queries done, avg_time = "
+                     << (sum / n_ok)
+                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
+    t = main_log.lap();
+    
+    // go CSA
+    sum = 0, n_ok = 0;
+    for (auto q : queries) {
+        int src = std::get<0>(q);
+        int dst = std::get<1>(q);
+        int t = std::get<2>(q);
         int arr = csa.earliest_arrival_time(src, dst, t, false, true, chg, km);
+        //std::cout << arr <<"\n";
         //assert(arr < ttbl.t_max);
         if (arr < ttbl.t_max) {
             sum += arr - t;
@@ -228,13 +269,11 @@ int main (int argc, char **argv) {
 
 
     // go HLCSA
-    t = main_log.lap();
     sum = 0, n_ok = 0;
     for (auto q : queries) {
         int src = std::get<0>(q);
         int dst = std::get<1>(q);
         int t = std::get<2>(q);
-        assert(t <= t_end);
         int arr = csa.earliest_arrival_time(src, dst, t, hub, trf, chg, km);
         //assert(arr < ttbl.t_max);
         if (arr < ttbl.t_max) {
@@ -246,6 +285,103 @@ int main (int argc, char **argv) {
                      << (sum / n_ok)
                      << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
     t = main_log.lap();
+
+
+    // go last departure Raptor
+    sum = 0, n_ok = 0;
+    for (auto q : queries) {
+        int src = std::get<0>(q);
+        int dst = std::get<1>(q);
+        int t = std::get<2>(q);
+        int arr = rpt.earliest_arrival_time(src, dst, t, false, true, 0, km);
+        int dep = - rev_rpt.earliest_arrival_time(dst, src, - arr, false, true, 0, km);
+        int arr2 = rpt.earliest_arrival_time(src, dst, dep, false, true, 0, km);
+        //std::cout << t <<" "<< dep <<" "<< arr <<" "<< arr2 <<"\n";
+        //assert(arr < ttbl.t_max);
+        if (arr < ttbl.t_max) {
+            assert(arr == arr2);
+            sum += dep - t;
+            ++n_ok;
+        }
+    }
+    main_log.cerr(t) << n_q << " last dep Raptor queries done, avg_dep_time = "
+                     << (sum / n_ok)
+                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
+    t = main_log.lap();
+
+
+    // go profile Raptor
+    sum = 0, n_ok = 0;
+    for (auto q : queries) {
+        int src = std::get<0>(q);
+        int dst = std::get<1>(q);
+        int ntrips = rpt.profile(rev_rpt, src, dst, 0, 24*3600,
+                                 false, true, km);
+        //std::cout << ntrips <<"\n";
+        sum += ntrips;
+        ++n_ok;
+    }
+    main_log.cerr(t) << n_q << " Profile Raptor queries done, avg_ntrips = "
+                     << (sum / n_ok)
+                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
+    t = main_log.lap();
+
+
+    //* go Pareto
+    sum = 0, n_ok = 0;
+    for (auto q : queries) {
+        int src = std::get<0>(q);
+        int dst = std::get<1>(q);
+        int t = std::get<2>(q);
+        int npath = rpt.earliest_walk_pareto(src, dst, t, false, true, chg, km);
+        if (npath > 0) {
+            sum += npath;
+            ++n_ok;
+        }
+    }
+    main_log.cerr(t) << n_q << " Pareto Raptor queries done, avg_npaths = "
+                     << (sum / n_ok)
+                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
+    t = main_log.lap();
+    // */
+    
+    //* go HLPareto
+    sum = 0, n_ok = 0;
+    for (auto q : queries) {
+        int src = std::get<0>(q);
+        int dst = std::get<1>(q);
+        int t = std::get<2>(q);
+        //int arr = rpt.earliest_arrival_time(src, dst, t, hub, trf, chg, km);
+        int npath = rpt.earliest_walk_pareto(src, dst, t, hub, trf, chg, km);
+        if (npath > 0) {
+            sum += npath;
+            ++n_ok;
+        }
+    }
+    main_log.cerr(t) << n_q << " Pareto HLRaptor queries done, avg_npaths = "
+                     << (sum / n_ok)
+                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
+    t = main_log.lap();
+    // */
+
+
+    // go profile HLRaptor
+    sum = 0, n_ok = 0;
+    for (auto q : queries) {
+        int src = std::get<0>(q);
+        int dst = std::get<1>(q);
+        //std::cout << src <<" "<< dst <<" :\n";
+        int ntrips = rpt.profile(rev_rpt, src, dst, 0, 24*3600,
+                                 hub, trf, km);
+        //std::cout << ntrips <<"\n";
+        sum += ntrips;
+        ++n_ok;
+    }
+    main_log.cerr(t) << n_q << " Profile HLRaptor queries done, avg_ntrips = "
+                     << (sum / n_ok)
+                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
+    t = main_log.lap();
+    // */    
 
 
     // ------------------------ end -------------------------

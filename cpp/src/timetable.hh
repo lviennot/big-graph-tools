@@ -4,10 +4,12 @@
 #include <assert.h>
 #include <limits>
 #include <iostream>
+#include <zlib.h>
 #include <algorithm>
 #include <vector>
 #include <set>
 #include <cstdarg>
+#include <cmath>
 #include <string>
 #include <unordered_map>
 #include <map>
@@ -28,7 +30,7 @@ public:
     typedef std::string id;
     typedef mgraph<ST, T> graph;
 
-    size_t n_st, n_s, n_r, n_h; // number of stations, stops, routes, hubs
+    size_t n_st, n_tr, n_s, n_r, n_h; // number of stations, transfer nodes, stops, routes, hubs
     std::vector<std::vector<S> > station_stops; // stops of a station
     std::vector<id> station_id, hub_id; // id from the gtfs data
     std::vector<ST> stop_station;
@@ -45,8 +47,8 @@ public:
     timetable(std::string day, std::string date,
               std::string calendar, std::string calendar_dates,
               std::string tripsfile, std::string stop_times,
-              std::string transfersfile, bool symmetrize = true)
-        : n_st(0), n_s(0), n_r(0), n_h(0)
+              std::string transfersfile, bool symmetrize = false)
+        : n_st(0), n_tr(0), n_s(0), n_r(0), n_h(0)
     {
         auto services = services_at(day, date, calendar, calendar_dates);
         std::cerr << services.size() <<" services\n";
@@ -57,40 +59,49 @@ public:
         for (auto seq : trip_seq) events += seq.second.size();
         std::cerr << events <<" events\n";
         auto transf = station_transfers(transfersfile);
-        std::cerr << transf.size() <<" transfers\n";
         build(trip_seq, transf, symmetrize);
     }
 
     timetable(std::string stop_times,
-              std::string transfersfile, bool symmetrize = true)
-        : n_st(0), n_s(0), n_r(0), n_h(0)
+              std::string transfersfile, bool symmetrize = false)
+        : n_st(0), n_tr(0), n_s(0), n_r(0), n_h(0)
     {
         auto trip_seq = trips_sequences_oneday(stop_times);
         int events = 0;
         for (auto seq : trip_seq) events += seq.second.size();
         std::cerr << events <<" events\n";
         auto transf = station_transfers_2(transfersfile);
-        std::cerr << transf.size() <<" transfers\n";
         build(trip_seq, transf, symmetrize);
     }
+
+    /*timetable(const timetable &&tt)
+        : n_st(tt.n_st), n_s(tt.n_s), n_r(tt.n_r), n_h(tt.n_h),
+          station_stops(tt.station_stops), station_id(tt.station_id),
+          hub_id(tt.hub_id), stop_station(tt.stop_station),
+          stop_route(tt.stop_route), stop_departures(tt.stop_departures),
+          stop_arrivals(tt.stop_arrivals), route_stops(tt.route_stops),
+          trips_of(tt.trips_of), transfers(tt.transfers), inhubs(tt.inhubs),
+          outhubs(tt.outhubs), lowerboundgraph(tt.lowerboundgraph),
+          id_to_station(tt.id_{
+        
+          }*/
 
     timetable(std::string stop_times,
               std::string inhubsfile, std::string outhubsfile,
-              std::string transfersfile, bool symmetrize = true,
+              std::string transfersfile, bool symmetrize = false,
               std::string walkingfile="", T t_from=0, T t_to=0)
-        : n_st(0), n_s(0), n_r(0), n_h(0)
+        : n_st(0), n_tr(0), n_s(0), n_r(0), n_h(0)
     {
         auto trip_seq = trips_sequences_oneday(stop_times);
         int events = 0;
         for (auto seq : trip_seq) events += seq.second.size();
         std::cerr << events <<" events\n";
         auto transf = station_transfers_2(transfersfile);
-        std::cerr << transf.size() <<" transfers\n";
         build(trip_seq, transf, symmetrize);
         // hubs :
-        assert(n_st == station_id.size());
-        hub_id.reserve(n_st);
-        for (int st = 0; st < n_st; ++st) {
+        assert(n_st + n_tr == station_id.size());
+        hub_id.reserve(n_st + n_tr);
+        for (int st = 0; st < n_st + n_tr; ++st) {
             hub_id.push_back(station_id[st]);
             id_to_hub[station_id[st]] = st;
         }
@@ -126,8 +137,8 @@ public:
                                              const graph::edge &f) {
                       return e.wgt < f.wgt;
                   });
-        inhubs.set_edges(edg);
-        std::cerr << inhubs.n() <<" in-hubs of avg size "
+        inhubs.set_edges(edg, n_h);
+        std::cerr << inhubs.n() <<" in-hubs, avg in-degree "
                   << (inhubs.m() / n_st) <<"\n";
         // out-hubs :
         edg.clear();
@@ -151,11 +162,21 @@ public:
                                              const graph::edge &f) {
                       return e.wgt < f.wgt;
                   });
-        outhubs.set_edges(edg);
-        std::cerr << outhubs.n() <<" out-hubs of avg size "
+        outhubs.set_edges(edg, n_h);
+        std::cerr << outhubs.n() <<" out-hubs, avg out-degree "
                   << (outhubs.m() / n_st) <<"\n";
         std::cerr << n_h <<" hubs\n";
 
+        // Check weight sort:
+        for (ST u : outhubs) {
+            T dt = 0;
+            for (auto e : outhubs[u]) { assert(dt <= e.wgt); dt = e.wgt; }
+        }
+        for (ST u : inhubs) {
+            T dt = 0;
+            for (auto e : inhubs[u]) { assert(dt <= e.wgt); dt = e.wgt; }
+        }
+        
         // lower-bound graph
         if (walkingfile != "") {
             size_t n_lb = n_h;
@@ -209,6 +230,40 @@ public:
             std::cerr <<"lower-bound graph "<< lowerboundgraph.n()
                       <<" nodes, "<< lowerboundgraph.m() <<" edges\n";
         }
+    }
+
+    // Hack for last departure time requests through EAT query:
+    void reverse_time() {
+        for (R r = 0; r < n_r; ++r) {
+            // stop sequence :
+            rev_vector(route_stops[r]);
+            for (int i = 0; i < route_stops[r].size(); ++i) {
+                S s = route_stops[r][i];
+                stop_route[s] = std::make_pair(r, i);
+            }
+            //trips :
+            rev_vector(trips_of[r]);
+            for (int a = 0; a < trips_of[r].size(); ++a) {
+                std::vector<std::pair<T,T> > &trip = trips_of[r][a];
+                rev_vector(trip);
+                for (int i = 0; i < trip.size(); ++i) {
+                    T rev_dep = - trip[i].first, rev_arr = - trip[i].second;
+                    trip[i] = std::make_pair(rev_arr, rev_dep);
+                    S s = route_stops[r][i];
+                    stop_departures[s][a] = rev_dep;
+                    stop_arrivals[s][a] = rev_arr;
+                }
+            }
+        }
+        // graphs
+        transfers = transfers.reverse();
+        transfers.sort_neighbors_by_weight();
+        graph tmpin = inhubs;
+        inhubs = outhubs.reverse();
+        inhubs.sort_neighbors_by_weight();
+        outhubs = tmpin.reverse();
+        outhubs.sort_neighbors_by_weight();
+        check();
     }
 
 private:
@@ -327,6 +382,8 @@ private:
         std::cerr << n_st <<" stations, "<< n_s <<" stops, "
                   << n_r <<" routes ("<< n_overpass <<" for overpasses)\n";
 
+        //for (ST u = 0; u < n_st; ++u) std::cout << station_id[u] <<"\n";
+        
         n_overpass = 0;
         for(R rte = 0; rte < n_r; ++rte) {
             std::sort(trips_of[rte].begin(), trips_of[rte].end(),
@@ -393,22 +450,59 @@ private:
         // transfers :
         std::vector<graph::edge> st_transf;
         st_transf.reserve(transf.size());
+        assert(n_st == station_id.size());
         for (auto tr : transf) {
             id from = std::get<0>(tr);
             id to = std::get<1>(tr);
-            if (id_to_station.find(from) == id_to_station.end()
-                || id_to_station.find(to) == id_to_station.end())
-                continue; // transitive closure does the necessary job
-            ST st_from = id_to_station[from];
-            ST st_to = id_to_station[to];
+            ST st_from, st_to;
+            if (id_to_station.find(from) == id_to_station.end()) {
+                st_from = n_st + n_tr++;
+                station_id.push_back(from);
+                id_to_station[from] = st_from;
+            } else { st_from = id_to_station[from]; }
+            if (id_to_station.find(to) == id_to_station.end()) {
+                st_to = n_st + n_tr++;                
+                station_id.push_back(to);
+                id_to_station[to] = st_to;
+            } else { st_to = id_to_station[to]; }
             T delay = std::get<2>(tr);
             st_transf.push_back(graph::edge(st_from, st_to, delay));
-            if (symmetrize)
-                st_transf.push_back(graph::edge(st_to, st_from, delay));
         }
-        transfers.set_edges(st_transf, n_st);
+        transfers.set_edges(st_transf, n_st + n_tr);
+        if (symmetrize) { // add missing reverse links
+            graph r = transfers.reverse();
+            for (ST u : r) {
+                for (auto e : r[u]) {
+                    if ( ! r.has_edge(e.dst, u)) {
+                        st_transf.push_back(graph::edge(u, e.dst, e.wgt));
+                        //std::cout << station_id[u] <<","<< station_id[e.dst]
+                        //          <<","<< e.wgt <<"\n";
+                    }
+                }
+            }
+            std::cout.flush();
+            transfers.set_edges(st_transf, n_st + n_tr);
+        }
+        //transfers = transfers.simple();
+        std::cerr << transfers.m() << " transfers with "
+                  << n_st <<" + "<< n_tr <<" nodes ";
+        size_t n_asym = transfers.asymmetry(false);
+        if (n_asym == 0) {
+            n_asym = transfers.asymmetry(true);
+            std::cerr <<"(symmetric: "
+                      << n_asym <<" reverse weights differ)\n";
+        } else {
+            std::cerr <<"(asymmetric: "
+                      << n_asym <<" reverse links miss)\n";
+        }
+        transfers.sort_neighbors_by_weight();
 
-        // check
+        check();
+
+    }
+
+public:
+    void check() {
         assert(station_stops.size() == n_st);
         assert(stop_station.size() == n_s);
         for (ST st = 0; st < n_st; ++st) {
@@ -553,7 +647,7 @@ public:
     read_tuples(const std::string filename, const size_t ncols) {
         std::vector<std::vector<std::string> > rows;
         FILE *in = filename != "-" ? fopen(filename.c_str(), "r") : stdin;
-        if (in == nullptr) return rows;
+        assert(in != nullptr);
         char line[100000];
 
         for ( ; fgets(line, sizeof line, in) != NULL ; ) {
@@ -566,9 +660,86 @@ public:
         }
         return rows;
     }
+    
+    static std::vector<std::vector<std::string> >
+    read_tuples_2(const std::string filename, const size_t ncols) {
+        std::vector<std::vector<std::string> > rows;
+        gzFile gz_in; FILE *in;
+        bool gzipped = filename.size() > 3
+                       && filename.substr(filename.size() - 3) == ".gz";
+        std::cerr << filename <<" "<< gzipped <<"\n";
+        if (gzipped) {
+            gz_in = gzopen(filename.c_str(), "r");
+        } else {
+            in = filename != "-" ? fopen(filename.c_str(), "r") : stdin;
+        }
+        assert(gzipped ? gz_in  != nullptr : in  != nullptr);
+        char line[100000];
+
+        for ( ; (gzipped ? gzgets(gz_in, line, sizeof line)
+                         : fgets(line, sizeof line, in)) != NULL ; ) {
+            auto v = split(line, ' ');
+            if (v.size() != ncols) {
+                std::cerr <<"wrong ncols : '"<< line <<"'\n";
+                assert(v.size() == ncols);
+            }
+            rows.push_back(v);
+        }
+        if (gzipped) {
+            gzclose(gz_in);
+        } else {
+            fclose(in);
+        }
+        return rows;
+    }
 
     static std::vector<std::vector<std::string> >
     read_csv(const std::string filename, const size_t ncol, ...) { // ... = column names
+        std::vector<std::vector<std::string> > rows;
+        FILE *in = filename != "-" ? fopen(filename.c_str(), "r") : stdin;
+        assert(in != nullptr);
+        char line[100000];
+        bool first = true;
+
+        std::vector<std::string> colnames(ncol);
+        va_list args;
+        va_start(args, ncol);
+        for (int j = 0; j < ncol; ++j) {
+            colnames[j] = va_arg(args, char *);
+        }
+        va_end(args);
+
+        std::vector<int> cols(ncol, -1);
+        for ( ; fscanf(in, " %s \n", line) >= 1 ; ) {
+            if (first) {
+                first = false;
+                int i = 0;
+                for (auto s : split(line, ',')) {
+                    for (int j = 0; j < ncol; ++j) {
+                        if (s == colnames[j]) cols[j] = i;
+                    }
+                    ++i;
+                }
+                for (int j = 0; j < ncol; ++j) {
+                    if (cols[j] < 0)
+                        throw std::invalid_argument("missing column : "
+                                                    + colnames[j]);
+                }
+            } else {
+                auto v = split(line, ',');
+                std::vector<std::string> r(ncol);
+                for (int j = 0; j < ncol; ++j) {
+                    assert(cols[j] < v.size());
+                    r[j] = v[cols[j]];
+                }
+                rows.push_back(r);
+            }
+        }
+        return rows;
+    }
+
+    static std::vector<std::vector<std::string> >
+    read_csv_2(const std::string filename, const size_t ncol, ...) { // ... = column names
         std::vector<std::vector<std::string> > rows;
         FILE *in = filename != "-" ? fopen(filename.c_str(), "r") : stdin;
         assert(in != nullptr);
@@ -631,6 +802,19 @@ public:
         v.push_back(s.substr(pos_prev, s.size() - pos_prev));
         return v;
     };
+
+    template<typename T>
+    static void rev_vector(std::vector<T> &v) {
+        int l = 0, r = v.size() - 1;
+        while (l < r) {
+            std::swap(v[l],v[r]);
+            ++l; --r;
+        }
+    }
+
+    static T decimeters_to_seconds(const int d) {
+        return (T)(std::lround(3600.0 * d / (4 * 10000))); // 4 Km/h
+    }
 };
 
 

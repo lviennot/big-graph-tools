@@ -11,7 +11,7 @@
 
 class connection_scan {
 private:
-    const timetable ttbl;
+    const timetable &ttbl;
 
     typedef timetable::ST ST;
     typedef timetable::S S;
@@ -51,7 +51,7 @@ private:
     static const int ntrips_max = 48;
     
 public:
-    connection_scan(const timetable tt)
+    connection_scan(const timetable &tt)
         : ttbl(tt), n_tr(0),
           st_eat(tt.n_h), h_eat(tt.n_h),
           //eat(tt.n_s)),
@@ -70,7 +70,7 @@ public:
             }
         }
         trip_board.insert(trip_board.end(), n_tr, not_stop_index);
-        trip_ntrips.insert(trip_ntrips.end(), n_tr, 0);
+        trip_ntrips.insert(trip_ntrips.end(), n_tr, 48);
         //scanned_trips.reserve(n_tr);
 
         std::cerr << n_tr <<" trips, "<< n_conn <<" connections\n";
@@ -114,18 +114,22 @@ public:
 
         // transitive closure of transfer graph:
         std::vector<graph::edge> transf;
-        traversal<graph> trav(tt.n_st);
+        traversal<graph> trav(tt.transfers.n());
         for (ST st = 0; st < tt.n_st; ++st) {
             trav.clear();
             trav.dijkstra(tt.transfers, st);
             for (int i = 1; i < trav.nvis(); ++i) {
                 ST ot = trav.visit(i);
                 T t = trav.dist(ot);
-                transf.push_back(graph::edge(st, ot, t));
+                if (ot < tt.n_st) transf.push_back(graph::edge(st, ot, t));
             }
         }
-        std::cerr << transf.size() <<" transitive transfers\n";
         transfers.set_edges(transf, tt.n_st);
+        size_t asym = transfers.asymmetry(false); 
+        std::cerr << transf.size() <<" transitive transfers: "
+                  << asym << " reverse links miss, "
+                  << transfers.asymmetry(true) <<" reverse weights differ\n";
+        assert(asym <= 100); // strange network otherwise
 
         rev_inhubs = tt.inhubs.reverse(); // not sorted by weight
     }
@@ -233,14 +237,16 @@ public:
                 }
             }
             if (trip_board[c.trip] != not_stop_index
-                || st_eat[st_from] + min_chg_time <= c.dep) { 
+                || st_eat[st_from] + min_chg_time <= c.dep) {
                 //if (trip_board[c.trip] == not_stop_index) {
                     //scanned_trips.push_back(c.trip);
                 ST st_to = ttbl.stop_station[c.to];                
                 if (trip_board[c.trip] == not_stop_index
+                    /* try to optimize nb trips but  very tricky */
                     || (n_trips[st_from]+1 < trip_ntrips[c.trip]
                         // TODO : if ==, check walking time
-                        && st_eat[st_from] + min_chg_time<= c.dep)) {
+                        && st_eat[st_from] + min_chg_time <= c.dep)
+                    ) {
                     trip_board[c.trip] = c.from;
                     trip_ntrips[c.trip] = n_trips[st_from] + 1;
                 }
@@ -307,7 +313,7 @@ public:
         assert(k <= ntrips_max);
         S par = parent[k][dst];
         T t = st_eat[dst];
-        cout << dst <<" at "<< t <<" :\n";
+        //cout << dst <<" at "<< t <<" :\n";
         while (dst != ttbl.stop_station[par]) {
             ST st_par = ttbl.stop_station[par];
             T t_par = 0;
@@ -335,11 +341,11 @@ public:
             // try trip:
             R r = ttbl.stop_route[par].first;
             int x_par = ttbl.stop_route[par].second;
+            int y = -1;
             for (S s : ttbl.station_stops[dst]) {
                 if (ttbl.stop_route[s].first == r
                     && ttbl.stop_route[s].second >= x_par) {
                     // find last trip arriving at t:
-                    int y = -1;
                     while (y+1 < ttbl.stop_arrivals[s].size()
                            && ttbl.stop_arrivals[s][y+1] <= t) {
                         ++y;
@@ -352,10 +358,11 @@ public:
                     }
                 }
             }
-            cout << (walk ? "walk " : "trip ")
-                 << k <<" from "<< par <<" of "<< st_par <<" at "<< t_par;
-            if ( ! walk) cout <<" by route "<< r;
-            cout <<" to "<< dst <<"\n";
+            cout << (walk ? "walk " : "trip ") << k;
+            if ( ! walk) cout << "="<<  r <<"["<< y <<"]";
+            cout <<" from "<< st_par <<"="<< ttbl.hub_id[st_par]
+                 <<" (stop "<< par <<") at "<< t_par
+                 <<" to "<< dst <<"="<< ttbl.hub_id[dst] <<" at "<< t <<"\n";
             dst = st_par;
             t = t_par;
             k = k - (walk ? 0 : 1);

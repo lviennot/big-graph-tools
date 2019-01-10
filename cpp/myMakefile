@@ -6,29 +6,31 @@ main: test
 	gunzip -c ex/corse-osm-t.gr.gz | ./test
 
 london:
-	make -f myMakefile raptor.o && ./raptor.o 0 86400 ~/dev/pt/Public-Transit-Data/London
+	make raptor.o && ./raptor.o 0 86400 ~/dev/pt/Public-Transit-Data/London
 
 london_lb:
-	make -f myMakefile tt_lb_graph.o && (./tt_lb_graph.o 0 86400 ~/dev/pt/Public-Transit-Data/London | gzip -c > ~/dev/pt/Public-Transit-Data/London/lower_bound.gr.gz)
+	make tt_lb_graph.o && (./tt_lb_graph.o 0 86400 ~/dev/pt/Public-Transit-Data/London | gzip -c > ~/dev/pt/Public-Transit-Data/London/lower_bound.gr.gz)
 	gunzip -c ~/dev/pt/Public-Transit-Data/London/lower_bound.gr.gz ~/dev/pt/Public-Transit-Data/London/walking_and_transfers.gr.gz | ./hltrans hubs - | gzip -c > ~/dev/pt/Public-Transit-Data/London/lower_bound-hubsall.gr.gz
 
-switzerland: switzerland.hltrans
+hubs: hltrans
+	make London.hltrans
+	make Paris.hltrans
+	make Switzerland.hltrans
 
-%.hltrans: ex/%.gr.gz
-	make -f myMakefile _output/$*-hubs.gr.gz
-	make -f myMakefile _output/$*-out.gr.gz
-	make -f myMakefile _output/$*-in.gr.gz
-	make -f myMakefile _output/$*-clos.gr.gz
+.PHONY: %.hltrans
+%.hltrans:
+	make $*/out_hubs.gr.gz $*/in_hubs.gr.gz
 
-%-out.gr.gz: %-hubs.gr.gz
+.PRECIOUS: %/hubs.gr.gz
+%/hubs.gr.gz: %/walking_graph.gr.gz %/stops.txt hltrans
+	gunzip -c $< | ./hltrans hubs - $*/stops.txt | gzip -c > $@
+
+%/out_hubs.gr.gz: %/hubs.gr.gz
 	gunzip -c $< | grep -e '^o ' | cut -d' ' -f2-4 | gzip -c > $@
 
-%-in.gr.gz: %-hubs.gr.gz
+%/in_hubs.gr.gz: %/hubs.gr.gz
 	gunzip -c $< | grep -e '^i ' | cut -d' ' -f2-4 | gzip -c > $@
 
-_output/%-hubs.gr.gz: ex/%.gr.gz ex/%.stops hltrans
-	mkdir -p _output
-	gunzip -c $< | ./hltrans hubs - ex/$*.stops | gzip -c > $@
 
 _output/%-hubsall.gr.gz: ex/%.gr.gz hltrans
 	mkdir -p _output
@@ -55,7 +57,7 @@ gtfs2graph: src/gtfs2graph.cc $(HDRS)
 	g++ -std=c++11 -O3 -g -rdynamic -pthread -o $@ $<
 
 %.o: src/%.cc $(HDRS)
-	g++ -std=c++11 -O3 -g -rdynamic -pthread -o $@ $<
+	g++ -std=c++11 -O3 -g -rdynamic -pthread -lz -o $@ $<
 
 headers:
 	@echo $(HDRS)
@@ -66,22 +68,68 @@ headers:
 	pts () { lab $$*; points $$*; } ;\
 	cd ../../../../dev/pt/Public-Transit-Data/Paris ; pts $*
 
+define MAC
+1
+2
+3 4
+endef
+export MAC
+mac:
+	echo "$$MAC" 
+
+%/walking_graph.gr.gz: %/walking_graph_seconds.gr.gz %/transfers.csv.gz %/stops.txt
+	cd $*; \
+	gunzip -c transfers.csv.gz | tail -n +2 | tr "," " " | gzip -c > transfers.gr.gz ;\
+	cat stops.txt | awk '{print $$1,$$1,0;}' | gzip -c > stops_self_loops.gr.gz ;\
+	gunzip -c transfers.gr.gz walking_graph_seconds.gr.gz stops_self_loops.gr.gz | gzip -c > walking_graph.gr.gz
+
+
 three: raptor.o
-	echo $$HOSTNAME
-	./raptor.o 0 86400 London
-	./raptor.o 0 86400 Paris
-	./raptor.o 0 86400 Switzerland
+	echo $$HOSTNAME $$OAR_JOB_ID
+	for dir in London Paris Switzerland; do \
+		(echo "src,dst,tdep,eat,eatUnrestricted,eatWalk"; ./raptor.o -query-file=queries-all.csv -exit $$dir) > CSA/$${dir}_times.csv ;\
+	done
+
+%.Raptor: raptor.o
+	echo $$HOSTNAME $$OAR_JOB_ID
+	./raptor.o $*
+
+threeCSA:
+	$(eval HUNDR := grep -v -e '^[0-9]$$$$' -e '^[0-9][0-9]$$$$' -e '^[0-9][0-9][1-9]$$$$' -e '^[0-9][1-9][0-9]$$$$')
+	echo $$HOSTNAME $$OAR_JOB_ID
+	cd CSA/build ;\
+	for dir in London Paris Switzerland; do \
+	for opt in '' '--hl' '--profile' '--hl --profile'; do \
+		d="------------" ;\
+		echo "$$d csa $$opt $$dir $$d"; ./csa $$opt $$dir | $(HUNDR) ;\
+	done ;\
+	done
+
+%.fourthCSA:
+	echo $$HOSTNAME $$OAR_JOB_ID
+	cd CSA/build ;\
+	opt='--hl --profile' ;\
+	b="------------ csa $$opt"; e="-------------" ;\
+	echo "$$b $* $$e"; ./csa $$opt $* ;\
+
+%/queries_1h.csv: %/queries10k.csv raptor.o
+	./raptor.o $* $< > /tmp/a
+	cat $*/queries.csv | tr "," " " | tail -n +2 > /tmp/q
+	(echo "source,target,time"; paste /tmp/q /tmp/l | awk '{if ($$5 - $$4 <= 3600) print $$2","$$3","$$4}') | head -n 1001 > queries_1h.csv
 
 clean:
 	rm -f test *~ src/*~
 	rm -fr test.dSYM
 
 %.rioc: scp
-	ssh rioc.inria.fr 'cd graph/cpp; oarsub -p mem\>=50 -l nodes=1/core=1,walltime=24:00:00 "make -f myMakefile $*"; sleep 5; cat OAR.*.stdout'
+	ssh rioc.inria.fr 'cd graph/cpp; oarsub -p mem\>=30 -l nodes=1/cpu=1/core=1,walltime=24:00:00 "make $*"; sleep 5; echo; echo " --- stdout:"; cat  `ls OAR.*.stdout | tail -n 1`; sleep 10; echo; echo " ---stderr:"; cat  `ls OAR.*.stderr | tail -n 1`'
 
 %.riocclear: scp
-	ssh rioc.inria.fr 'cd graph/cpp; rm -f OAR.*; oarsub -p mem\>=50 -l nodes=1/core=1,walltime=24:00:00 "make -f myMakefile $*"; sleep 5; cat OAR.*.stdout'
+	ssh rioc.inria.fr 'cd graph/cpp; rm -f OAR.*; oarsub -p "mem \>= 50" -l nodes=1/core=1,walltime=24:00:00 "make $*"; sleep 5; cat OAR.*.stdout'
+
+%.rioctest: scp
+	ssh rioc.inria.fr 'cd graph/cpp; oarsub -p mem\>=30 -l nodes=1/cpu=2/core=6,walltime=96:00:00 "make $*"; sleep 5; cat `ls OAR.*.stdout | tail -n 1`'
 
 scp:
-	scp -r myMakefile src rioc.inria.fr:graph/cpp/
-
+	rsync -v -e ssh -r --exclude '*~' --exclude '#*' myMakefile Makefile src rioc.inria.fr:graph/cpp/
+	cp -f Makefile myMakefile
