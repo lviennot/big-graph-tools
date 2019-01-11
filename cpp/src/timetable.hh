@@ -25,7 +25,7 @@ public:
     typedef int R; // routes
     typedef int T; // time
 
-    const int t_min = 0, t_max = std::numeric_limits<int>::max() / 2;
+    const int t_min = 0, t_max = 1000000000;//std::numeric_limits<int>::max()/2;
 
     typedef std::string id;
     typedef mgraph<ST, T> graph;

@@ -174,7 +174,7 @@ public:
                             ) {
 
         assert(ntr_max <= ntrips_max);
-        assert(min_chg_time > 0);
+        assert(min_chg_time >= 0);
 
         T eat_estim = ttbl.t_max;
         if (use_hubs) {

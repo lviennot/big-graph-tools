@@ -122,103 +122,90 @@ int main (int argc, char **argv) {
     uint64_t sum = 0, n_ok = 0;
 
 
-    // ------------------ random queries -------------------
+    // ------------------ read queries -------------------
     int n_q = 0;
     std::vector<std::tuple<int, int, int> > queries;
-    {
+    if (has_opt(argc, argv, "-query-file=")) {
         auto rows = timetable::read_csv
             (dir + get_opt(argc, argv, "-query-file=", "queries.csv"),
              3, "source", "target", "time");
         for (auto r : rows) {
-            if (has_opt(argc, argv, "-fast") && n_q >= 10) break;
+            if (has_opt(argc, argv, "-10") && n_q >= 10) break;
             int src = ttbl.id_to_station[r[0]];
             int dst = ttbl.id_to_station[r[1]];
             int t = std::stoi(r[2]);
             queries.push_back(std::make_tuple(src, dst, t));
             ++n_q;
         }
+        main_log.cerr(t) << n_q << " queries\n";
+        t = main_log.lap();
     }
-    main_log.cerr(t) << n_q << " queries\n";
-    t = main_log.lap();
-
-    /*
-    // make n_q successful queries
-    t = main_log.lap();
-    int n_q = 1000, t_beg = 0*3600, t_end = 24*3600;
-    std::vector<std::tuple<int, int, int> > queries;
-    int n_try = 0, n_err = 0;
-    while (queries.size() < n_q) {
-        ++n_try;
-        int src = rand() % ttbl.n_st;
-        int dst = rand() % ttbl.n_st;
-        int t = t_beg + rand() % (t_end - t_beg);
-        // 13890 -> 19202 at 10130
-        //PB ferm trans. : src = 13890; dst = 19202; t = 10130;
-        int arr1 = rpt.earliest_arrival_time(src, dst, t, false, true, chg, km);
-        //int arr1 = rpt.earliest_walk_pareto(src, dst, t);
-        int arr2 = csa.earliest_arrival_time(src, dst, t, false, true, chg, km);
-        if (arr1 != arr2 && n_err++ < 10) {
-            std::cerr <<" csa diff : "<< src <<" -> "<< dst <<" at "<< t
-                      <<" : "<< arr1 <<", "<< arr2 <<"\n"; 
-        }
-        //assert(arr1 <= arr2);
-        if (arr2 < ttbl.t_max) { ++n_ok; }
-        if (true || (arr1 < ttbl.t_max && arr2 < ttbl.t_max)) {
-            sum += arr2 - arr1;
-            queries.push_back(std::make_tuple(src, dst, t));
-        }
-    }
-    main_log.cerr(t) <<"random query success rate : "
-                     << (n_q*100/n_try) <<"% for "<< n_try <<" queries\n";
-    std::cerr << n_ok <<" rpt==csa, E[eat_csa - eat_rpt] = "<< (sum/n_q) <<"\n";
-
-    t = main_log.lap();
-    */
-
-
-    //* CHECK
-    n_ok = 0;
-    for (auto q : queries) {
-        int src = std::get<0>(q);
-        int dst = std::get<1>(q);
-        int t = std::get<2>(q);
-        if (has_opt(argc, argv, "-skip") && ttbl.station_id[src] != "4561")
-            continue;
-        src = ttbl.id_to_station[get_opt(argc, argv, "-src=",
-                                         ttbl.station_id[src])];
-        dst = ttbl.id_to_station[get_opt(argc, argv, "-dst=",
-                                         ttbl.station_id[dst])];
-        t = get_int_opt(argc, argv, "-t=", t);
-        std::cerr << ttbl.station_id[src] <<","<< ttbl.station_id[dst]
-                  <<","<< t <<" ("<< n_ok <<")\n";
-        int arr1 = rpt.earliest_arrival_time(src, dst, t, false, true, chg, km);
-        int arr2 = csa.earliest_arrival_time(src, dst, t, false, true, chg, km);
-        if (arr1 != arr2) {
-            std::cerr <<"---------- \n";
-            rpt.print_journey(dst, std::cerr, -1, chg);
-            std::cerr <<"---------- \n";
-            csa.print_journey(dst, false, true, chg, std::cerr);
-            std::cerr <<"--- \n";
-            int u = get_int_opt(argc, argv, "-u=", 3837);
-            std::cerr <<"EAT "<< u <<" at "<< csa.eat(u) <<"\n";;
-            std::cerr <<"---------- \n";
-            std::cerr << arr1 <<" "<< arr2 <<"\n";
-        }
-        assert(arr1 == arr2);
-        int arrHL1 = rpt.earliest_arrival_time(src, dst, t, hub, trf, chg, km);
-        int arrHL2 = csa.earliest_arrival_time(src, dst, t, hub, trf, chg, km);
-        std::cerr << arrHL1 <<" "<< arrHL2 <<"\n";
-        assert(arrHL1 == arrHL2);
-        std::cout << ttbl.station_id[src] <<","<< ttbl.station_id[dst] <<","<< t
-                  <<","<< arr1 <<","<< arrHL1
-                  <<","<< rpt.walking_time(src, dst) <<"\n";
-        ++n_ok;
-    }
-    std::cout.flush();
-    main_log.cerr(t) << n_ok << " CHECK\n";
-    t = main_log.lap();
     // */
 
+
+    // make andom successful queries
+    if (get_opt(argc, argv, "-random-queries=", "") != "") {
+        n_q = std::stoi(get_opt(argc, argv, "-random-queries=", "1000"));
+        int max_delay = std::stoi(get_opt(argc, argv, "-max-delay=",
+                                          std::to_string(ttbl.t_max)));
+        int t_beg = 0*3600, t_end = 24*3600;
+        int n_try = 0, n_err = 0;
+        while (queries.size() < n_q) {
+            ++n_try;
+            int src = rand() % ttbl.n_st;
+            int dst = rand() % ttbl.n_st;
+            int t = t_beg + rand() % (t_end - t_beg);
+            int arr = csa.earliest_arrival_time(src, dst, t, false, true,
+                                                 chg, km);
+            if (arr <= t + max_delay) {
+                ++n_ok;
+                queries.push_back(std::make_tuple(src, dst, t));
+            }
+        }
+        main_log.cerr(t) << n_q <<" Random queries, success rate : "
+                         << (n_q*100/n_try) <<"%\n";
+        
+        t = main_log.lap();
+    }
+    // */
+
+
+    //* Arrival times
+    if (has_opt(argc, argv, "-arrival-times")) {
+        std::cout <<"src,dst,tdep,eat,eat_Unrestricted_Walking,eat_Walk_Only\n";
+        n_ok = 0;
+        for (auto q : queries) {
+            int src = std::get<0>(q);
+            int dst = std::get<1>(q);
+            int t = std::get<2>(q);
+            if (has_opt(argc, argv, "-skip") && ttbl.station_id[src] != "4561")
+                continue;
+            src = ttbl.id_to_station[get_opt(argc, argv, "-src=",
+                                             ttbl.station_id[src])];
+            dst = ttbl.id_to_station[get_opt(argc, argv, "-dst=",
+                                         ttbl.station_id[dst])];
+            t = get_int_opt(argc, argv, "-t=", t);
+            int arr1 = rpt.earliest_arrival_time(src, dst, t, false, true,
+                                                 chg, km);
+            int arr2 = csa.earliest_arrival_time(src, dst, t, false, true,
+                                                 chg, km);
+            // assert(arr1 == arr2); // can fail if chg == 0
+            int arrHL1 = rpt.earliest_arrival_time(src, dst, t, hub, trf,
+                                                   chg, km);
+            int arrHL2 = csa.earliest_arrival_time(src, dst, t, hub, trf,
+                                                   chg, km);
+            //assert(arrHL1 == arrHL2); // can fail if chg == 0
+            std::cout << ttbl.station_id[src] <<","<< ttbl.station_id[dst]
+                      <<","<< t <<","<< arr1 <<","<< arrHL1
+                      <<","<< (t + rpt.walking_time(src, dst)) <<"\n";
+            std::cout.flush();
+        }
+        ++n_ok;
+        main_log.cerr(t) << n_ok << " arrival times\n";
+        t = main_log.lap();
+    }
+    // */
+    
     if (has_opt(argc, argv, "-exit")) exit(0);
     
     // go Raptor restricted walk
