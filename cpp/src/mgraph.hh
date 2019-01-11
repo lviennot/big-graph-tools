@@ -46,20 +46,13 @@ public:
     
 private:
     V n_;            // number of vertices
-    size_t m_;       // number of edges
-    size_t *sdeg;    // prefix sum of degrees
-    edge_head *adj;  // neighbors of u are at index sdeg[u]
+    std::vector<size_t> sdeg;    // prefix sum of degrees
+    std::vector<edge_head> adj;  // neighbors of u are at index sdeg[u]
     
 public:
 
     V n() const { return n_; }
-    size_t m() const { return m_; }
-
-    ~mgraph() {
-        if (sdeg != nullptr) delete[] sdeg;
-        if (adj != nullptr) delete[] adj;
-    }
-
+    size_t m() const { return adj.size(); }
 
     typedef edge::src_dst_wgt<V,W> edge;
 
@@ -68,7 +61,7 @@ public:
         init_from_edges(n, edg);
     }
     
-    mgraph(const std::vector<edge> &edg) : sdeg(nullptr), adj(nullptr) {
+    mgraph(const std::vector<edge> &edg) {
         set_edges(edg);
     }
 
@@ -86,24 +79,6 @@ public:
         static std::vector<edge> edg;
         init_from_edges(0, edg);
     }
-
-    mgraph(mgraph&& o) noexcept : n_(o.n_), m_(o.m_), sdeg(o.sdeg), adj(o.adj) {
-        o.sdeg = nullptr;
-        o.adj = nullptr;
-        o.n_ = 0;
-        o.m_ = 0;
-    }
-    
-    mgraph(const mgraph& o) : n_(0), m_(0), sdeg(nullptr), adj(nullptr) {
-        sdeg = new size_t[o.n_+1];
-        adj = new edge_head[o.m_];
-        std::copy(o.sdeg, o.sdeg + o.n_ + 1, sdeg);
-        std::copy(o.adj, o.adj + o.m_, adj);
-        n_ = o.n_;
-        m_ = o.m_;
-    }
-    
-    //TODO mgraph(mgraph &&g) n_(g.n_), m_(g.m_), sdeg(g.sdeg), adj(g.adj){}
 
     V degree(V u) const { return (int) sdeg[u+1] - sdeg[u]; }
 
@@ -250,12 +225,38 @@ public:
     
     //  --------------------- iterators : -----------------------
     //
-    // for (int u : g)
+    // for (V u : g)
     //     for (auto e : g[u])
     //         f(u, e.dst, e.wgt);
     //
 
-    class vtx_iterator {
+    typedef V vtx_iterator;
+    vtx_iterator begin() const { return 0; }
+    vtx_iterator end() const { return n_; }
+
+    const mgraph& nodes() const { return *this; }
+
+    
+    class neighborhood {
+        const mgraph &g;
+        const V u;
+    public:
+        neighborhood(const mgraph &g, V u) : g(g), u(u) {}
+        typedef const edge_head *eh_iterator;
+        eh_iterator begin() const { return g.adj + g.sdeg[u]; }
+        eh_iterator end() const { return g.adj + g.sdeg[u+1]; }
+    };
+
+    neighborhood operator[](V u) const {
+        if (u < 0 || u >= n_)
+            throw std::invalid_argument("mgraph: not a vertex index: "
+                                        + std::to_string(u));
+        return neighborhood(*this, u);
+    }
+
+    neighborhood neighbors(V u) const { return (*this)[u]; }
+
+        class vtx_iterator {
         V u;
     public:
         vtx_iterator(V u) : u(u) {}
@@ -265,72 +266,27 @@ public:
         bool operator!=(const vtx_iterator& v) { return u != v.u; }
     };
 
-    vtx_iterator begin() const { return vtx_iterator(0); }
-    vtx_iterator end() const { return vtx_iterator(n_); }
-    
-    class ngb_iterator {
+    class edge_set {
         const mgraph &g;
-        const V u;
+        V u;
+        size_t e;
     public:
-        ngb_iterator(const mgraph &g, V u) : g(g), u(u) {}
+        edge_set(const mgraph &g) : g(g), u(0), e(0) {}
         typedef const edge_head *eh_iterator;
-        eh_iterator begin() const { return g.adj + g.sdeg[u]; }
-        eh_iterator end() const { return g.adj + g.sdeg[u+1]; }
+        eh_iterator begin() const { return g.adj; }
+        eh_iterator end() const { return g.adj + g.sdeg[n_]; }
     };
-
-    ngb_iterator operator[](V u) const {
-        if (u < 0 || u >= n_)
-            throw std::invalid_argument("mgraph: not a vertex index: "
-                                        + std::to_string(u));
-        return ngb_iterator(*this, u);
-    }
-
-    // copy assignment:
-
-    mgraph& operator=(const mgraph& other) {
-        if (this != &other) { // self-assignment check expected
-            if (other.n_ != n_) {
-                delete[] sdeg;
-                n_ = 0; sdeg = nullptr;       // in case next line throws
-                sdeg = new size_t[other.n_+1];
-            } 
-            if (other.m_ != m_) {
-                delete[] adj;
-                m_ = 0; adj = nullptr;       // in case next line throws
-                adj = new edge_head[other.m_];
-            } 
-            std::copy(other.adj, other.adj + other.m_, adj);
-            std::copy(other.sdeg, other.sdeg + other.n_ + 1, sdeg);
-            n_ = other.n_;
-            m_ = other.m_;
-        }
-        return *this;
-    }
-
-    // move assignment:
-
-    mgraph& operator=(mgraph&& other) noexcept {
-        if(this != &other) {
-            delete[] sdeg;
-            n_ = 0; sdeg = nullptr;
-            delete[] adj;
-            m_ = 0; adj = nullptr;
-            std::swap(sdeg, other.sdeg);
-            std::swap(n_, other.n_);
-            std::swap(adj, other.adj);
-            std::swap(m_, other.m_);
-        }
-        return *this;
+    
+    
     }
     
 private:
 
     void init_from_edges(V n, const std::vector<edge> &edg) {
-        n_ = n;
-        m_ = edg.size();
-        
         // degrees:
-        sdeg = new size_t [n_+1];
+        n_ = n;
+        sdeg.resize(n_+1, 0);
+        sdeg.erase(0);
         for (V u = 0; u <= n_; ++u) sdeg[u] = 0;
         for (size_t i = 0; i < m_; ++i) {
             assert(0 <= edg[i].src && edg[i].src < n_);
@@ -342,7 +298,8 @@ private:
         }
         
         // adjacencies:
-        adj = new edge_head [m_+1] ;
+        size_t m_ = edg.size();
+        adj.resize(m_);
         for (size_t i = m_; i > 0; ) {
             --i;
             size_t u = edg[i].src;

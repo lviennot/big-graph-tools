@@ -1,10 +1,19 @@
 HDRS:=$(wildcard src/*.hh)
 CTRS:=$(wildcard src/*.cc)
-#$(addprefix src/, edge.hh mgraph.hh)
-#dyn_graph.hh traversal.hh eccentricity.hh graphgen.hh treedec.hh pruned_landmark_labeling.hh skeleton.hh verbose.hh)
+LIBS:=-lz
 
-main: test
-	gunzip -c ex/corse-osm-t.gr.gz | ./test
+main:
+	echo "main still has to be defined"
+
+# -------------------- compile ------------------------
+
+%.o: src/%.cc $(HDRS)
+	g++ -std=c++11 -O3 -g -rdynamic -pthread $(LIBS) -o $@ $<
+
+headers:
+	@echo $(HDRS)
+
+# -------------------- walking graph ------------------
 
 london:
 	make raptor.o && ./raptor.o 0 86400 ~/dev/pt/Public-Transit-Data/London
@@ -41,12 +50,6 @@ _output/%-clos.gr.gz: ex/%.gr.gz ex/%.stops hltrans
 	mkdir -p _output
 	gunzip -c $< | ./hltrans closure - ex/$*.stops | cut -d' ' -f2-4 | gzip -c > $@
 
-unit: src/unit.cc $(HDRS)
-	g++ -std=c++11 -O3 -g -rdynamic -pthread -o $@ $<
-	./unit
-
-test: src/test.cc $(HDRS)
-	g++ -std=c++11 -O3 -g -rdynamic -pthread -o $@ $<
 
 hltrans: src/HL_trans.cc $(HDRS)
 	g++ -std=c++11 -O3 -g -rdynamic -pthread -o $@ $<
@@ -57,26 +60,13 @@ ch: src/CH.cc $(HDRS)
 gtfs2graph: src/gtfs2graph.cc $(HDRS)
 	g++ -std=c++11 -O3 -g -rdynamic -pthread -o $@ $<
 
-%.o: src/%.cc $(HDRS)
-	g++ -std=c++11 -O3 -g -rdynamic -pthread -lz -o $@ $<
 
-headers:
-	@echo $(HDRS)
 
 %.stop_paris:
 	lab () { while [ $$# -gt 0 ]; do st=$$1; stop=`grep -e ",$${st}[^0-9]" labels/stop_label.csv | sed -e 's/,.*//'`; echo -n "$$st is "; grep -e "^$$stop," gtfs/stops.txt; shift; done } ;\
 	points () { lab $$* | cut -d , -f5,6 | awk '{printf "&p=%s", $$1}'; echo ""; } ;\
 	pts () { lab $$*; points $$*; } ;\
 	cd ../../../../dev/pt/Public-Transit-Data/Paris ; pts $*
-
-define MAC
-1
-2
-3 4
-endef
-export MAC
-mac:
-	echo "$$MAC" 
 
 %/walking_graph.gr.gz: %/walking_graph_seconds.gr.gz %/transfers.csv.gz %/stops.txt
 	cd $*; \
@@ -113,11 +103,17 @@ threeCSA:
 	b="------------ csa $$opt"; e="-------------" ;\
 	echo "$$b $* $$e"; ./csa $$opt $* ;\
 
+# ------------------- public transit data --------------
+
+PT_DIRS:=London Paris Switzerland
 
 alleat:
 	echo $$HOSTNAME $$OAR_JOB_ID
-	for dir in London Paris Switzerland; do \
-		make $${dir}/arrival_times.csv; \
+	for dir in $(PT_DIRS); do \
+		for qry in queries queries-2h queries-loc10pct; do \
+			echo $$dir $$qry; \
+			make $${dir}/$${qry}.csv.eat; \
+		done; \
 	done
 
 alleatpar:
@@ -126,20 +122,42 @@ alleatpar:
 	(sleep 10; make Paris/arrival_times.csv2) & \
 	(sleep 20; make Switzerland/arrival_times.csv2)
 
+%.three:
+	for dir in London Paris Switzerland; do \
+		make $${dir}/$*; \
+	done
 
-%/arrival_times.csv: raptor.o
-	./raptor.o $* -query-file=queries-all.csv -arrival-times -min-change-time=0 > $@
+%.rioc3: _scp
+	for dir in London Paris Switzerland; do \
+		make $${dir}/$*.rioc RESA=yes; \
+	done
 
-%/arrival_times.csv2: raptor.o
-	./raptor.o $* -query-file=queries-all.csv -arrival-times -min-change-time=0 > $@
+%.eat: raptor.o
+	$(eval DIR:=`dirname $*`)
+	$(eval QRY:=`basename $*`)
+	./raptor.o $(DIR) -query-file=$(QRY) -arrival-times > $@
 
-%/queries-loc10pct.csv: %/queries-all.csv raptor.o
-	 # 
-	(echo "source,target,time"; tail -n +2 /tmp/$*_times.csv | awk -F, '{if ($$5 - $$3 <= 4800) print $$1","$$2","$$3}') | head -n 1001 > $@
+%.cp:
+	cp $* /Volumes/files.inria.fr/gang/road/graphs/public_transport/$*
+	scp $* rioc.inria.fr:graph/cpp/$*
 
-%/queries-2h.csv: %/queries-all.csv raptor.o
-	 # ./raptor.o London -query-file=queries-1h30.csv -arrival-times > /tmp/$*_times.csv
-	(echo "source,target,time"; tail -n +2 /tmp/$*_times.csv | awk -F, '{if ($$5 - $$3 <= 7200) print $$1","$$2","$$3}') | head -n 1001 > $@
+
+# ---------------- queries -------------------
+
+%/arrival_times.csv:
+	./raptor.o $* -query-file=queries-all.csv -arrival-times > $@
+
+%/queries-loc10pct.csv: %/arrival_times.csv
+	(echo "source,target,time"; tail -n +2 /tmp/$*_times.csv | awk -F, '{ print $$1, $$2, $$3, $$6-$$3}' | sort -n -k 4 | head -n 1001 | tr " " "," | cut -d, -f1-3) > $@
+
+%/queries-2h.csv: %/arrival_times.csv
+	(echo "source,target,time"; tail -n +2 /tmp/$*_times.csv | awk -F, '{if ($$4 - $$3 <= 7200) print $$1","$$2","$$3}') | head -n 1001 > $@
+
+%/queries-4h.csv: %/arrival_times.csv
+	(echo "source,target,time"; tail -n +2 /tmp/$*_times.csv | awk -F, '{if ($$4 - $$3 <= 14400) print $$1","$$2","$$3}') | head -n 1001 > $@
+
+
+# ------------- manage running ---------------
 
 %.force:
 	rm -f $*; make $*
@@ -150,15 +168,27 @@ clean:
 
 %.rioc: _scp
 	$(eval ALL:=nodes=1/cpu=2/core=6,walltime=96:00:00)
-	$(eval CPU:=$(if $(RES),$(ALL),nodes=1/cpu=1/core=$(if $(CORE),$(CORE),1),walltime=24:00:00))
+	$(eval CPU:=$(if $(RESA),$(ALL),nodes=1/cpu=1/core=$(if $(CORE),$(CORE),1),walltime=24:00:00))
 	echo $(CPU)
-	ssh rioc.inria.fr 'cd graph/cpp; oarsub -p mem\>=30 -l $(CPU) "make $*"; sleep 5; echo; echo " --- stdout:"; cat  `ls OAR.*.stdout | tail -n 1`; sleep 10; echo; echo " ---stderr:"; cat  `ls OAR.*.stderr | tail -n 1`'
+	ssh rioc.inria.fr 'cd graph/cpp; oarsub -p mem\>=30 -l $(CPU) "make $*"; sleep 5; echo; echo " --- stdout:"; cat  `ls OAR.*.stdout | tail -n 1`; sleep 10; echo; echo " ---stderr:"; cat  `ls OAR.*.stderr | tail -n 1`; echo'
 
 _scp: myMakefile Makefile $(HDRS) $(CTRS)
 	rsync -v -e ssh --inplace -r --exclude '*~' --exclude '#*' myMakefile Makefile src rioc.inria.fr:graph/cpp/
 	cp -f Makefile myMakefile
 	touch $@
 
+# ------------------ test some macros -----------------------
+
 t:
 	$(eval ALL:=$(if $(ALL),yes,no))
 	echo $(ALL)
+
+define MAC
+1
+2
+3 4
+endef
+export MAC
+mac:
+	echo "$$MAC" 
+
