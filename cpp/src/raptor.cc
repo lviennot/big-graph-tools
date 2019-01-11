@@ -59,6 +59,11 @@ std::string get_opt(int argc, char **argv,
     return dft;
 }
 
+int get_int_opt(int argc, char **argv,
+                std::string opt_prefix, int dft) {
+    return std::stoi(get_opt(argc, argv, opt_prefix, std::to_string(dft)));
+}
+
 int main (int argc, char **argv) {
     logging main_log("--");
 
@@ -111,7 +116,8 @@ int main (int argc, char **argv) {
     t = main_log.lap();
 
     const bool hub=true, trf=false;
-    const int chg=0, km=48;
+    const int chg=std::stoi(get_opt(argc, argv, "-min-change-time=", "60")),
+        km=48;
 
     uint64_t sum = 0, n_ok = 0;
 
@@ -177,7 +183,12 @@ int main (int argc, char **argv) {
         int dst = std::get<1>(q);
         int t = std::get<2>(q);
         if (has_opt(argc, argv, "-skip") && ttbl.station_id[src] != "4561")
-            continue; 
+            continue;
+        src = ttbl.id_to_station[get_opt(argc, argv, "-src=",
+                                         ttbl.station_id[src])];
+        dst = ttbl.id_to_station[get_opt(argc, argv, "-dst=",
+                                         ttbl.station_id[dst])];
+        t = get_int_opt(argc, argv, "-t=", t);
         std::cerr << ttbl.station_id[src] <<","<< ttbl.station_id[dst]
                   <<","<< t <<" ("<< n_ok <<")\n";
         int arr1 = rpt.earliest_arrival_time(src, dst, t, false, true, chg, km);
@@ -187,6 +198,9 @@ int main (int argc, char **argv) {
             rpt.print_journey(dst, std::cerr, -1, chg);
             std::cerr <<"---------- \n";
             csa.print_journey(dst, false, true, chg, std::cerr);
+            std::cerr <<"--- \n";
+            int u = get_int_opt(argc, argv, "-u=", 3837);
+            std::cerr <<"EAT "<< u <<" at "<< csa.eat(u) <<"\n";;
             std::cerr <<"---------- \n";
             std::cerr << arr1 <<" "<< arr2 <<"\n";
         }

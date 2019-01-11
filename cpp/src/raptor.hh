@@ -543,18 +543,28 @@ public:
             int par_x = ttbl.stop_route[par.stop].second;
             assert(par_eat + min_chg_time <= ttbl.trips_of[r][y][par_x].second);
             assert(par_eat + par.dist == par.eat);
+            for (int i = x; i >= par_x; --i) {
+                S s = ttbl.route_stops[r][i];
+                ST st = ttbl.stop_station[s];
+                cout <<"     "<< st <<"="<< ttbl.hub_id[st]
+                     <<" (stop "<< s <<" idx="<< i <<") at "
+                     << ttbl.trips_of[r][y][i].first <<">="<< st_eat[st] 
+                     <<", dep. "<< ttbl.trips_of[r][y][i].second <<"\n";
+            }
             // */
             cout <<"trip "<< k <<"="<< r <<"["<< y <<"]"
                  <<" from "<< par_st <<"="<< ttbl.hub_id[par_st]
                  <<" (stop "<< par.stop <<")"
                  <<" at "<< par_eat
                  <<" to "<< dst <<"="<< ttbl.hub_id[dst]
-                 <<" at "<< par.eat <<" ("<< par.dist <<"s)\n";
+                 <<" at "<< par.eat <<">="<< st_eat[dst] 
+                 <<" ("<< par.dist <<"s)\n";
         } else {
             cout <<"walk "<< k <<" from "<< par_st <<"="<< ttbl.hub_id[par_st]
                  <<" at "<< par_eat
                  <<" to "<< dst <<"="<< ttbl.hub_id[dst]
-                 <<" at "<< par.eat <<" ("<< par.dist <<"s)\n";
+                 <<" at "<< par.eat <<"<="<< st_eat[dst] 
+                 <<" ("<< par.dist <<"s)\n";
             // Check walking time:
             assert(par.dist == walking_time(par_st, dst));
             assert(par_eat + par.dist == par.eat);

@@ -9,6 +9,12 @@
 #include "timetable.hh"
 #include "traversal.hh"
 
+/*
+
+\com{LV}{Tricky note}
+Note that a special care has to be taken when a stop $u$ is also a hub $h$. The two roles must be treated separately. In particular, two arrival times have to be maintained for each role. When the arrival time is updated by walk, both $\tau(u)$ and $\tau(h)$ must be updated. However, when it is updated by traversing a connection, only $\tau(u)$ is updated. It would be incorrect to update $\tau(h)$ as well: when scanning a connection $v,w$ at time $t$, we update arrival time to $v$ through walking from $h$ and must ignore any update at $u$ coming from a connection within interval $[t-d(h,v),t]$. 
+*/
+
 class connection_scan {
 private:
     const timetable &ttbl;
@@ -39,7 +45,7 @@ private:
     std::vector<connection> conn;
     std::vector<std::pair<R, int> > trip_route;
     std::vector<S> trip_board; // last stop where trip can be boarded
-    std::vector<int> trip_ntrips, n_trips;
+    std::vector<int> trip_ntrips, n_trips, eat_trip;
     //std::vector<TR> scanned_trips;
     std::vector<int> conn_at; // index of first connection at a given minute
     
@@ -48,14 +54,14 @@ private:
     graph transfers, rev_inhubs;
 
     const int not_stop_index = -1;
-    static const int ntrips_max = 48;
+    static const int ntrips_max = 48, not_trip_index = -1;
     
 public:
     connection_scan(const timetable &tt)
         : ttbl(tt), n_tr(0),
           st_eat(tt.n_h), h_eat(tt.n_h),
           //eat(tt.n_s)),
-          n_trips(tt.n_h)
+          n_trips(tt.n_h), eat_trip(tt.n_h)
     {
         parent.reserve(ntrips_max + 1);
         for (int i = 0; i <= ntrips_max; ++i) {
@@ -93,16 +99,42 @@ public:
         }
 
         std::sort(conn.begin(), conn.end(),
-                  [](const connection &c, const connection &d) {
+                  [&tt](const connection &c, const connection &d) {
                       if (c.dep == d.dep) {
                           if (c.arr == d.arr) {
+                              // Be careful to 0 delay connections:
                               if (c.trip == d.trip) return c.index < d.index;
+                              /* if c.dep == c.arr == d.dep == d.arr and
+                                 min_chg_time is 0, we can have problems
+                                 with 0 delay connections:
+                                 would need no loop with 0 delay and top. sort.
+                                 The following heuristic is far from sufficient:
+                              */
+                              if (c.dep == c.arr) {// 0 delay connections!
+                                  if (tt.stop_station[c.to]
+                                      == tt.stop_station[d.from]) return true;
+                                  if (tt.stop_station[d.to]
+                                      == tt.stop_station[c.from]) return false;
+                              }
                               return c.trip < d.trip;
                           }
                           return c.arr < d.arr;
                       }
                       return c.dep < d.dep;
                   });
+
+        // Check
+        for (auto c : conn) {
+            R r = trip_route[c.trip].first;
+            int y = trip_route[c.trip].second;
+            assert(ttbl.stop_route[c.from].first == r);
+            int x = ttbl.stop_route[c.from].second;
+            assert(ttbl.route_stops[r][x] == c.from);
+            assert(ttbl.route_stops[r][x+1] == c.to);
+            assert(c.index == x+1);
+            //very busy second at London: if (c.dep == 65460 && c.arr == c.dep)
+            //    std::cerr << c.from <<" -> "<< c.to <<"\n";
+        }
 
         T last = std::max(3600*24, conn.back().dep);
         conn_at.insert(conn_at.end(), last, 0);
@@ -142,6 +174,7 @@ public:
                             ) {
 
         assert(ntr_max <= ntrips_max);
+        assert(min_chg_time > 0);
 
         T eat_estim = ttbl.t_max;
         if (use_hubs) {
@@ -155,6 +188,7 @@ public:
         // initialize
         for (int i = 0; i < ttbl.n_h; ++i) { st_eat[i] = ttbl.t_max; }
         for (int i = 0; i < ttbl.n_h; ++i) { n_trips[i] = ntrips_max + 1000; }
+        for (int i = 0; i < ttbl.n_h; ++i) { eat_trip[i] = not_trip_index; }
         for (int tr = 0; tr < n_tr; ++tr) { trip_board[tr] = not_stop_index; }
         for (int tr = 0; tr < n_tr; ++tr) { trip_ntrips[tr] = n_tr; }
         //scanned_trips.clear();
@@ -176,9 +210,10 @@ public:
         }
 
         auto update_eat = [this](ST st, T t, S par, ST by_st, int k,
-                                 bool by_trip = false) {
+                                 int by_trip = not_trip_index) {
             if (t < st_eat[st]) {
                 st_eat[st] = t;
+                eat_trip[st] = by_trip;
                 n_trips[st] = k;
                 parent[k][st] = par;
             }
@@ -224,6 +259,7 @@ public:
                 break; // target pruning
             }
             ST st_from = ttbl.stop_station[c.from];
+            ST st_to = ttbl.stop_station[c.to];                
             // do we need st_eat[st_from] ?
             if (use_hubs && trip_board[c.trip] == not_stop_index) {
                 for (auto f : rev_inhubs[st_from]) {
@@ -236,14 +272,29 @@ public:
                     }
                 }
             }
+            /* For debug purposes :
+            if (c.from == 4889 || c.from == 4890 || c.to == 18855) {
+                R r = trip_route[c.trip].first;
+                int y = trip_route[c.trip].second;
+                int x = ttbl.stop_route[c.from].second;
+                std::cerr <<"..... "<< r <<"["<< y <<"]"
+                          <<" "<< ttbl.trips_of[r][y][x].second
+                          <<" from "<< c.from <<" idx="<< x
+                          <<" at "<< c.dep <<" board="<< trip_board[c.trip]
+                          <<" to "<< c.to
+                          <<" at "<< c.arr 
+                          <<" : "<< st_eat[st_from]
+                          <<" "<< st_eat[st_to] <<"\n";
+            }
+            // */
             if (trip_board[c.trip] != not_stop_index
                 || st_eat[st_from] + min_chg_time <= c.dep) {
                 //if (trip_board[c.trip] == not_stop_index) {
                     //scanned_trips.push_back(c.trip);
-                ST st_to = ttbl.stop_station[c.to];                
                 if (trip_board[c.trip] == not_stop_index
-                    /* try to optimize nb trips but  very tricky */
-                    || (n_trips[st_from]+1 < trip_ntrips[c.trip]
+                    /* try to optimize nb trips but tricky */
+                    || (n_trips[st_from] + (eat_trip[st_to] == c.trip ? 0 : 1)
+                               < trip_ntrips[c.trip]
                         // TODO : if ==, check walking time
                         && st_eat[st_from] + min_chg_time <= c.dep)
                     ) {
@@ -255,13 +306,13 @@ public:
                     && trip_ntrips[c.trip] <= ntr_max
                     && (c.arr < st_eat[st_to]
                         //|| trip_ntrips[c.trip] < n_trips[st_to]
-                        // FIXME : what if c.arr > st_eat[st_to] ?
-                        // need eat for each ntrips
+                        // PB : what if c.arr > st_eat[st_to] ?
+                        // to fix it, need eat for each ntrips
                         )) {
                     update_eat(st_to, c.arr,
                                trip_board[c.trip],
                                ttbl.stop_station[c.from],
-                               trip_ntrips[c.trip], true);
+                               trip_ntrips[c.trip], c.trip);
                     // transfers :
                     if (use_transfers) {
                         for (auto transf : transfers[st_to]) {
@@ -282,7 +333,7 @@ public:
                                        trip_ntrips[c.trip]);
                         }
                     }
-                }
+                }                
             }
         }
 
@@ -302,6 +353,7 @@ public:
         return st_eat[dst];
     }
 
+    T eat(ST u) { return st_eat[u]; }
 
     void print_journey(ST dst,
                        const bool use_hubs = true,
@@ -362,7 +414,8 @@ public:
             if ( ! walk) cout << "="<<  r <<"["<< y <<"]";
             cout <<" from "<< st_par <<"="<< ttbl.hub_id[st_par]
                  <<" (stop "<< par <<") at "<< t_par
-                 <<" to "<< dst <<"="<< ttbl.hub_id[dst] <<" at "<< t <<"\n";
+                 <<" to "<< dst <<"="<< ttbl.hub_id[dst] <<" at "
+                 << t <<">="<< st_eat[dst] <<"\n";
             dst = st_par;
             t = t_par;
             k = k - (walk ? 0 : 1);
