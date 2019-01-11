@@ -4,6 +4,7 @@
 #include "raptor.hh"
 #include "connection_scan.hh"
 #include "logging.hh"
+#include "file_util.hh"
 
 void usage_exit (char **argv) {
     auto paragraph = [](std::string s, int width=80) -> std::string {
@@ -89,8 +90,8 @@ int main (int argc, char **argv) {
             dir+"calendar.txt", dir+"calendar_dates.txt",
             dir+"trips.txt", dir+"stop_times.txt", dir+"transfers.txt", true};
     */
-    timetable ttbl{dir+"stop_times.csv",
-            dir+"in_hubs.gr", dir+"out_hubs.gr",
+    timetable ttbl{dir+"stop_times.csv.gz",
+            dir+"in_hubs.gr.gz", dir+"out_hubs.gr.gz",
             dir+"transfers.csv", true};
     //dir+"walking_and_transfers.gr", t_from, t_to};
     std::cerr << ttbl.n_r <<" routes, "<< ttbl.n_st <<" sations, "
@@ -125,8 +126,8 @@ int main (int argc, char **argv) {
     // ------------------ read queries -------------------
     int n_q = 0;
     std::vector<std::tuple<int, int, int> > queries;
-    if (has_opt(argc, argv, "-query-file=")) {
-        auto rows = timetable::read_csv
+    if (get_opt(argc, argv, "-query-file=", "queries.csv") != "") {
+        auto rows = read_csv
             (dir + get_opt(argc, argv, "-query-file=", "queries.csv"),
              3, "source", "target", "time");
         for (auto r : rows) {

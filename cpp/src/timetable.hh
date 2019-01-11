@@ -15,6 +15,7 @@
 #include <map>
 
 #include "mgraph.hh"
+#include "file_util.hh"
 
 class timetable {
     // a station has several stops, each stop belongs to exactly one route
@@ -195,7 +196,7 @@ public:
             };
 
             std::vector<graph::edge> edg;
-            auto rows = timetable::read_tuples(walkingfile, 3);
+            auto rows = read_tuples(walkingfile, 3);
             edg.reserve(rows.size() + 100000);
             for (auto r : rows) {
                 ST u = get_node(r[0]), v = get_node(r[1]);
@@ -643,174 +644,6 @@ public:
     }
     
 public:
-    static std::vector<std::vector<std::string> >
-    read_tuples(const std::string filename, const size_t ncols) {
-        std::vector<std::vector<std::string> > rows;
-        FILE *in = filename != "-" ? fopen(filename.c_str(), "r") : stdin;
-        assert(in != nullptr);
-        char line[100000];
-
-        for ( ; fgets(line, sizeof line, in) != NULL ; ) {
-            auto v = split(line, ' ');
-            if (v.size() != ncols) {
-                std::cerr <<"wrong ncols : '"<< line <<"'\n";
-                assert(v.size() == ncols);
-            }
-            rows.push_back(v);
-        }
-        return rows;
-    }
-    
-    static std::vector<std::vector<std::string> >
-    read_tuples_2(const std::string filename, const size_t ncols) {
-        std::vector<std::vector<std::string> > rows;
-        gzFile gz_in; FILE *in;
-        bool gzipped = filename.size() > 3
-                       && filename.substr(filename.size() - 3) == ".gz";
-        std::cerr << filename <<" "<< gzipped <<"\n";
-        if (gzipped) {
-            gz_in = gzopen(filename.c_str(), "r");
-        } else {
-            in = filename != "-" ? fopen(filename.c_str(), "r") : stdin;
-        }
-        assert(gzipped ? gz_in  != nullptr : in  != nullptr);
-        char line[100000];
-
-        for ( ; (gzipped ? gzgets(gz_in, line, sizeof line)
-                         : fgets(line, sizeof line, in)) != NULL ; ) {
-            auto v = split(line, ' ');
-            if (v.size() != ncols) {
-                std::cerr <<"wrong ncols : '"<< line <<"'\n";
-                assert(v.size() == ncols);
-            }
-            rows.push_back(v);
-        }
-        if (gzipped) {
-            gzclose(gz_in);
-        } else {
-            fclose(in);
-        }
-        return rows;
-    }
-
-    static std::vector<std::vector<std::string> >
-    read_csv(const std::string filename, const size_t ncol, ...) { // ... = column names
-        std::vector<std::vector<std::string> > rows;
-        FILE *in = filename != "-" ? fopen(filename.c_str(), "r") : stdin;
-        assert(in != nullptr);
-        char line[100000];
-        bool first = true;
-
-        std::vector<std::string> colnames(ncol);
-        va_list args;
-        va_start(args, ncol);
-        for (int j = 0; j < ncol; ++j) {
-            colnames[j] = va_arg(args, char *);
-        }
-        va_end(args);
-
-        std::vector<int> cols(ncol, -1);
-        for ( ; fscanf(in, " %s \n", line) >= 1 ; ) {
-            if (first) {
-                first = false;
-                int i = 0;
-                for (auto s : split(line, ',')) {
-                    for (int j = 0; j < ncol; ++j) {
-                        if (s == colnames[j]) cols[j] = i;
-                    }
-                    ++i;
-                }
-                for (int j = 0; j < ncol; ++j) {
-                    if (cols[j] < 0)
-                        throw std::invalid_argument("missing column : "
-                                                    + colnames[j]);
-                }
-            } else {
-                auto v = split(line, ',');
-                std::vector<std::string> r(ncol);
-                for (int j = 0; j < ncol; ++j) {
-                    assert(cols[j] < v.size());
-                    r[j] = v[cols[j]];
-                }
-                rows.push_back(r);
-            }
-        }
-        return rows;
-    }
-
-    static std::vector<std::vector<std::string> >
-    read_csv_2(const std::string filename, const size_t ncol, ...) { // ... = column names
-        std::vector<std::vector<std::string> > rows;
-        FILE *in = filename != "-" ? fopen(filename.c_str(), "r") : stdin;
-        assert(in != nullptr);
-        char line[100000];
-        bool first = true;
-
-        std::vector<std::string> colnames(ncol);
-        va_list args;
-        va_start(args, ncol);
-        for (int j = 0; j < ncol; ++j) {
-            colnames[j] = va_arg(args, char *);
-        }
-        va_end(args);
-
-        std::vector<int> cols(ncol, -1);
-        for ( ; fscanf(in, " %s \n", line) >= 1 ; ) {
-            if (first) {
-                first = false;
-                int i = 0;
-                for (auto s : split(line, ',')) {
-                    for (int j = 0; j < ncol; ++j) {
-                        if (s == colnames[j]) cols[j] = i;
-                    }
-                    ++i;
-                }
-                for (int j = 0; j < ncol; ++j) {
-                    if (cols[j] < 0)
-                        throw std::invalid_argument("missing column : "
-                                                    + colnames[j]);
-                }
-            } else {
-                auto v = split(line, ',');
-                std::vector<std::string> r(ncol);
-                for (int j = 0; j < ncol; ++j) {
-                    assert(cols[j] < v.size());
-                    r[j] = v[cols[j]];
-                }
-                rows.push_back(r);
-            }
-        }
-        return rows;
-    }
-
-    static std::vector<std::string> split(const std::string &s,
-                                          const char delim) {
-        std::vector<std::string> v;
-        /*
-        std::string field{""};
-        for (auto c : s) {
-            if (c != delim) field += c;
-            else { v.push_back(field); field = ""; }
-        }
-        v.push_back(field);
-        */
-        size_t pos = 0, pos_prev = 0;
-        while ((pos = s.find(delim, pos_prev)) != std::string::npos) {
-            v.push_back(s.substr(pos_prev, pos - pos_prev));
-            pos_prev = pos + 1;
-        }
-        v.push_back(s.substr(pos_prev, s.size() - pos_prev));
-        return v;
-    };
-
-    template<typename T>
-    static void rev_vector(std::vector<T> &v) {
-        int l = 0, r = v.size() - 1;
-        while (l < r) {
-            std::swap(v[l],v[r]);
-            ++l; --r;
-        }
-    }
 
     static T decimeters_to_seconds(const int d) {
         return (T)(std::lround(3600.0 * d / (4 * 10000))); // 4 Km/h
