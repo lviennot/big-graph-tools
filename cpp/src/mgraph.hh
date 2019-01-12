@@ -84,17 +84,6 @@ public:
 
     size_t degree_sum(V u) const { return sdeg[u]; }
     
-    mgraph reverse() const {
-        std::vector<edge> edg;
-        edg.reserve(m_);
-        for (V u = 0; u < n_; ++u) {
-            for (size_t e = sdeg[u]; e < sdeg[u+1]; ++e) {
-                edg.push_back(edge(adj[e].dst, u, adj[e].wgt));
-            }
-        }
-        return mgraph(n_, edg);
-    }
-
     // asserts sorted adjacency lists (use g.reverse() or g.reverse().reverse())
     bool has_edge(V u, V v) {
         size_t e1 = sdeg[u], e2 = sdeg[u+1];
@@ -107,6 +96,31 @@ public:
             else e1 = m + 1; // in adj[m+1 .. e2-1]
         }
         return false;
+    }
+
+    // asserts sorted adjacency lists (use g.reverse() or g.reverse().reverse())
+    W edge_weight(V u, V v) {
+        size_t e1 = sdeg[u], e2 = sdeg[u+1];
+        // is v in adj[e1 .. e2-1] ?
+        while (e1 < e2) {
+            size_t m = (e1 + e2) / 2;
+            V w = adj[m].dst;
+            if (w == v) return adj[m].wgt;
+            if (v < w) e2 = m; // in adj[e1 .. m-1]
+            else e1 = m + 1; // in adj[m+1 .. e2-1]
+        }
+        throw std::invalid_argument("mgraph.edge_weight(): edge not found");
+    }
+    
+    mgraph reverse() const {
+        std::vector<edge> edg;
+        edg.reserve(m());
+        for (V u = 0; u < n_; ++u) {
+            for (size_t e = sdeg[u]; e < sdeg[u+1]; ++e) {
+                edg.push_back(edge(adj[e].dst, u, adj[e].wgt));
+            }
+        }
+        return mgraph(n_, edg);
     }
 
     bool is_symmetric(bool same_weight = true) const {
@@ -131,21 +145,7 @@ public:
         }
         return n_asym;
     }
-    
-    
-    // asserts sorted adjacency lists (use g.reverse() or g.reverse().reverse())
-    W edge_weight(V u, V v) {
-        size_t e1 = sdeg[u], e2 = sdeg[u+1];
-        // is v in adj[e1 .. e2-1] ?
-        while (e1 < e2) {
-            size_t m = (e1 + e2) / 2;
-            V w = adj[m].dst;
-            if (w == v) return adj[m].wgt;
-            if (v < w) e2 = m; // in adj[e1 .. m-1]
-            else e1 = m + 1; // in adj[m+1 .. e2-1]
-        }
-        throw std::invalid_argument("mgraph.edge_weight(): edge not found");
-    }
+
     
     static W aggregate_min (W w, W x) { return std::min(w, x); }
     static W aggregate_sum (W w, W x) { return w + x; }
@@ -153,7 +153,7 @@ public:
     mgraph simple(std::function<W(W,W)> aggr = aggregate_min) const {
         mgraph g = reverse().reverse(); // sort adjacencies
         std::vector<edge> edg;
-        edg.reserve(m_);
+        edg.reserve(m());
         for (V u = 0; u < g.n_; ++u) {
             for (size_t e = g.sdeg[u]; e < g.sdeg[u+1]; ++e) {
                 W w = g.adj[e].wgt;
@@ -168,12 +168,13 @@ public:
         return mgraph(n_, edg);
     }
 
-    std::vector<edge> edges() const {
-        std::vector<edge> edg(m_);
+    std::vector<edge> edges_vector() const {
+        std::vector<edge> edg;
+        edg.reserve(m());
         size_t i = 0;
         for (V u = 0; u < n_; ++u) {
             for (size_t e = sdeg[u]; e < sdeg[u+1]; ++e) {
-                edg[i++] = edge(u, adj[e].dst, adj[e].wgt);
+                edg.emplace_back(u, adj[e].dst, adj[e].wgt);
             }
         }
         return edg;
@@ -217,9 +218,7 @@ public:
             }
         }
 
-        return std::pair<mgraph<V, W, nb_not_vertex>,
-                         std::vector<V> >(mgraph(n_sub, edg),
-                                          vtx_sub);
+        return std::make_pair(mgraph(n_sub, edg), vtx_sub);
     }
 
     
@@ -230,9 +229,18 @@ public:
     //         f(u, e.dst, e.wgt);
     //
 
-    typedef V vtx_iterator;
-    vtx_iterator begin() const { return 0; }
-    vtx_iterator end() const { return n_; }
+    class vtx_iterator {
+        V u;
+    public:
+        vtx_iterator(V u) : u(u) {}
+        //vtx_iterator(vtx_iterator &&o) : u(o.u) {}
+        V operator*() const { return u; }
+        vtx_iterator &operator++() { ++u; return *this;}
+        bool operator!=(const vtx_iterator& o) { return u != o.u; }
+    };
+    
+    vtx_iterator begin() const { return vtx_iterator(0); }
+    vtx_iterator end() const { return vtx_iterator(n_); }
 
     const mgraph& nodes() const { return *this; }
 
@@ -242,9 +250,9 @@ public:
         const V u;
     public:
         neighborhood(const mgraph &g, V u) : g(g), u(u) {}
-        typedef const edge_head *eh_iterator;
-        eh_iterator begin() const { return g.adj + g.sdeg[u]; }
-        eh_iterator end() const { return g.adj + g.sdeg[u+1]; }
+        typedef typename std::vector<edge_head>::const_iterator eh_iterator;
+        eh_iterator begin() const { return g.adj.cbegin() + g.sdeg[u]; }
+        eh_iterator end() const { return g.adj.cend() + g.sdeg[u+1]; }
     };
 
     neighborhood operator[](V u) const {
@@ -253,17 +261,22 @@ public:
                                         + std::to_string(u));
         return neighborhood(*this, u);
     }
-
     neighborhood neighbors(V u) const { return (*this)[u]; }
 
-        class vtx_iterator {
+    class edg_iterator {
+        const mgraph &g;
         V u;
+        size_t e;
     public:
-        vtx_iterator(V u) : u(u) {}
-        vtx_iterator(vtx_iterator &&v) : u(v.u) {}
-        V operator*() const { return u; }
-        vtx_iterator &operator++() { ++u; return (*this); }
-        bool operator!=(const vtx_iterator& v) { return u != v.u; }
+        edg_iterator(const mgraph &g, V u, size_t e) : g(g), u(u), e(e) {}
+        //edg_iterator(edg_iterator &&o) : g(o.g), g u(v.u) {}
+        edge operator*() const { return edge(u, g.adj[e].dst, g.adj[e].wgt); }
+        vtx_iterator &operator++() {
+            ++e;
+            if (e >= g.sdeg[u+1]) ++u;
+            return *this;
+        }
+        bool operator!=(const edg_iterator& o) { return e != o.e; }
     };
 
     class edge_set {
@@ -272,21 +285,21 @@ public:
         size_t e;
     public:
         edge_set(const mgraph &g) : g(g), u(0), e(0) {}
-        typedef const edge_head *eh_iterator;
-        eh_iterator begin() const { return g.adj; }
-        eh_iterator end() const { return g.adj + g.sdeg[n_]; }
+        edg_iterator begin() const { return edg_iterator(g, 0, 0); }
+        edg_iterator end() const { return edg_iterator(g, g.n_, g.m()); }
     };
+
+    edge_set edges() const { return edge_set(*this); }
     
-    
-    }
     
 private:
 
     void init_from_edges(V n, const std::vector<edge> &edg) {
-        // degrees:
         n_ = n;
-        sdeg.resize(n_+1, 0);
-        sdeg.erase(0);
+        size_t m_ = edg.size();
+
+        // degrees:
+        sdeg.resize(n_+1);
         for (V u = 0; u <= n_; ++u) sdeg[u] = 0;
         for (size_t i = 0; i < m_; ++i) {
             assert(0 <= edg[i].src && edg[i].src < n_);
@@ -298,7 +311,6 @@ private:
         }
         
         // adjacencies:
-        size_t m_ = edg.size();
         adj.resize(m_);
         for (size_t i = m_; i > 0; ) {
             --i;
@@ -333,7 +345,7 @@ namespace unit {
         std::cerr << "\n";
 
         // subgraph:
-        auto sub = g.subgraph([](int u) { return u % 2 ==0; });
+        auto sub = g.subgraph([](int u) { return u % 2 == 0; });
         graph h = sub.first;
         std::vector<int> vtx = sub.second;
         std::cerr << "mgraph_test: ";
