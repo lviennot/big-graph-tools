@@ -563,7 +563,7 @@ public:
         else trav.bfs(g, u, filter);
         if (add_hub) {
             sum_nvis += trav.nvis(); last_nvis += trav.nvis();
-            for (int i = trav.nvis() - 1; i >= 0; --i) {
+            for (int i = trav.nvis() - 1; i != -1; --i) {
                 int v = trav.visit(i);
                 label_t &lab_v = index_[v];
                 lab_v.in_v.back() = i_hub;
@@ -584,7 +584,7 @@ public:
         else trav.bfs(g_rev, u, filter);
         if (add_hub) {
             sum_nvis += trav.nvis(); last_nvis += trav.nvis();
-            for (int i = trav.nvis() - 1; i >= 0; --i) {
+            for (int i = trav.nvis() - 1; i != -1; --i) {
                 int v = trav.visit(i);
                 label_t &lab_v = index_[v];
                 lab_v.out_v.back() = i_hub;

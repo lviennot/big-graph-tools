@@ -815,7 +815,7 @@ public:
                             ++y; // so that y < y_prev bellow
                         }
                     }
-                    for (int i = pts.size() - 1; i >= 0; --i) {
+                    for (int i = pts.size() - 1; i != -1; --i) {
                         T arr = pts[i].x, wlk = pts[i].y;
                         int y_prev = y;
                         while (y-1 >= 0

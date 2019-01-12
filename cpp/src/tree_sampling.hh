@@ -89,7 +89,7 @@ public:
         trees_sel.push_back(sel_ptr);
         assert(trees.size() == trees_sel.size());
         n_all_trees += tn;
-        for (int i = tn - 1; i >= 0; --i) {
+        for (int i = tn - 1; i != -1; --i) {
             V u = trav.visit(i);
             in_trees[u].push_back(tree_index(t, i));
             // skel: if (nds[i].dist >= alpha * (nds[i].dist_max - nds[i].dist))
@@ -120,7 +120,7 @@ public:
         }
         if ( ! reach_sel) { return; } // no selected node to cover!
 
-        for (int i = tn - 1; i >= 0; --i) {
+        for (int i = tn - 1; i != -1; --i) {
             V u = trav.visit(i);
             // skel: if (nds[i].dist >= alpha * (nds[i].dist_max - nds[i].dist))
             if (sel[u]) n_subtree[u] += boost_selection;
@@ -142,7 +142,7 @@ public:
         assert(trees.size() == trees_sel.size());
         tn = tr.n();
         n_all_trees += tn;
-        for (int i = tn - 1; i >= 0; --i) {
+        for (int i = tn - 1; i != -1; --i) {
             V u = sub.second[i];
             in_trees[u].push_back(tree_index(t, i));
             // skel: if (nds[i].dist >= alpha * (nds[i].dist_max - nds[i].dist))

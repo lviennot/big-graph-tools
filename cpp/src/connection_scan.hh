@@ -48,6 +48,7 @@ private:
     std::vector<int> trip_ntrips, n_trips, eat_trip;
     //std::vector<TR> scanned_trips;
     std::vector<int> conn_at; // index of first connection at a given minute
+    std::vector<int> conn_at_last; // last connection at a given minute
     
     // transitively closed transfers:
     typedef timetable::graph graph;
@@ -137,11 +138,19 @@ public:
         }
 
         T last = std::max(3600*24, conn.back().dep);
-        conn_at.insert(conn_at.end(), last, 0);
+        conn_at.insert(conn_at.end(), last+1, 0);
         T t = 1;
         for (int i = 0; i < conn.size() ; ++i) {
             while (t < conn[i].dep) { conn_at[t++] = i; }
             if (t == conn[i].dep) conn_at[t++] = i;
+        }
+        //
+        last = std::max(3600*24, conn.back().arr);
+        conn_at_last.insert(conn_at.end(), last+1, conn.size() - 1);
+        t = last - 1;
+        for (int i = conn.size() - 1; i != -1; --i) {
+            while (t > conn[i].arr) { conn_at[t--] = i; }
+            if (t == conn[i].arr) conn_at[t--] = i;
         }
 
         // transitive closure of transfer graph:
