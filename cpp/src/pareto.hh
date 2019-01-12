@@ -8,7 +8,8 @@
 #include <utility>
 
 /**
- * 2D Pareto set in a sorted vector.
+ * 2D Pareto set in a sorted vector, i.e. the points form a decreasing curve:
+ * while scanning the vector, x increases while y decreases.
  *
  */
 
@@ -42,6 +43,25 @@ public:
             pts = p.pts;
         }
         return *this;
+    }
+
+    void check() {
+        W x, y;
+        bool first = true;
+        for (auto p : pts) {
+            if (first) { first = false; }
+            else { assert(x <= p.x && y >= p.y && (x < p.x || y > p.y)); }
+            x = p.x; y = p.y;
+        }
+    }
+
+    W x_of_y(W y, W dft) { // returns the x coord. of the last point before y
+        W x = dft;
+        for (auto p = pts.rbegin() ; p != pts.rend() ; ++p) {
+            if (p->y > y) return x;
+            x = p->x;
+        }
+        return x;
     }
 
     bool add(W x, W y) { // returns true if point was added
@@ -118,16 +138,6 @@ public:
             cout << p.x <<","<< p.y <<" ";
         }
         cout <<"\n";
-    }
-
-    void check() {
-        W x, y;
-        bool first = true;
-        for (auto p : pts) {
-            if (first) { first = false; }
-            else { assert(x <= p.x && y >= p.y && (x < p.x || y > p.y)); }
-            x = p.x; y = p.y;
-        }
     }
 
     bool dominates(W x, W y) {

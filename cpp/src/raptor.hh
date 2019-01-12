@@ -92,6 +92,7 @@ public:
         improved_stations.reserve(tt.n_h);
         improved_routes.reserve(tt.n_r);
         improved_hubs.reserve(tt.n_h);
+        for (int i = 0; i < tt.n_h; ++i) { all_pareto[i].reserve(n_trips_max); }
 
         parent.reserve(ntrips_max + 1);
         for (int i = 0; i <= ntrips_max; ++i) {
@@ -336,14 +337,15 @@ public:
                 int y_end = trips.size();
                 S par = not_stop_index;
                 T par_eat = ttbl.t_max;
+                S u; ST st; T eat, arr;
                 for (int y = y_end; x < x_end; ++x) {
                     //std::cerr <<" x="<< x <<" xend="<< x_end <<"\n";
-                    S u = stops[x];
+                    u = stops[x];
                     //std::cerr << "  u="<< u <<" n_s="<< ttbl.n_s
                     //          <<" "<< ttbl.stop_station.size() <<"\n";
-                    ST st = ttbl.stop_station[u];
-                    T eat = st_eat[st];
-                    T arr;
+                    st = ttbl.stop_station[u];
+                    eat = st_eat[st];
+                    arr;
                     if (y < y_end && (arr = trips[y][x].first) < eat) {
                         assert(par != not_stop_index);
                         reach_station_trip(st, arr, arr - par_eat, r, par, k);
@@ -444,10 +446,11 @@ public:
             for (auto e : rev_inhubs[dst]) {
                 hub_to_dst[e.dst] = e.wgt;
             }
+            ST h;
             for (int i = 0; i < ttbl.n_st; ++i) {
                 if (st_eat[i] < st_eat[dst]) {
                     for (auto f : ttbl.outhubs[i]) {
-                        ST h = f.dst;
+                        h = f.dst;
                         if (st_eat[i] + f.wgt >= st_eat[dst])
                             break; // target prun
                         auto h_dst = hub_to_dst.find(h);
