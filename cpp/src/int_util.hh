@@ -16,16 +16,17 @@ public:
 
 
 template<typename I>
-class irange {
+class range {
     const I from, to;
     bool incr;
 public:
-    irange(I from, I to, bool incr) : from(from), to(to), incr(incr) {} 
-    irange(I from, I to) : irange(from, to, true) { assert(from < to); } 
+    range(I from, I to, bool incr) : from(from), to(to), incr(incr) {} 
+    range(I from, I to) : range(from, to, true) { assert(from < to); } 
     int_iterator<I> begin() const { return int_iterator<I>(from, incr); }
     int_iterator<I> end() const { return int_iterator<I>(to, incr); }
 };
 
+typedef range<int> irange;
 
     
 #endif // INT_UTIL_HH
