@@ -1,0 +1,206 @@
+HDRS:=$(wildcard src/*.hh)
+CTRS:=$(wildcard src/*.cc)
+LIBS:=-lz
+
+
+# -------------------- compile ------------------------
+
+main: raptor.o
+
+hltrans: src/HL_trans.cc $(HDRS)
+	g++ -std=c++11 -O3 -g -rdynamic -pthread -o $@ $<
+
+ch: src/CH.cc $(HDRS)
+	g++ -std=c++11 -O3 -g -rdynamic -pthread -o $@ $<
+
+gtfs2graph: src/gtfs2graph.cc $(HDRS)
+	g++ -std=c++11 -O3 -g -rdynamic -pthread -o $@ $<
+
+
+%.o: src/%.cc $(HDRS)
+	g++ -std=c++11 -O3 -g -rdynamic -pthread $(LIBS) -o $@ $<
+
+headers:
+	@echo $(HDRS)
+
+
+unit: unit.og
+	./unit.og
+
+%.og: src/%.cc $(HDRS)
+	g++ -std=c++11 -g -rdynamic -pthread $(LIBS) -o $@ $<
+
+
+# -------------------- walking graph ------------------
+
+london:
+	make raptor.o && ./raptor.o 0 86400 ~/dev/pt/Public-Transit-Data/London
+
+london_lb:
+	make tt_lb_graph.o && (./tt_lb_graph.o 0 86400 ~/dev/pt/Public-Transit-Data/London | gzip -c > ~/dev/pt/Public-Transit-Data/London/lower_bound.gr.gz)
+	gunzip -c ~/dev/pt/Public-Transit-Data/London/lower_bound.gr.gz ~/dev/pt/Public-Transit-Data/London/walking_and_transfers.gr.gz | ./hltrans hubs - | gzip -c > ~/dev/pt/Public-Transit-Data/London/lower_bound-hubsall.gr.gz
+
+hubs: hltrans
+	make London.hltrans
+	make Paris.hltrans
+	make Switzerland.hltrans
+
+.PHONY: %.hltrans
+%.hltrans:
+	make $*/out_hubs.gr.gz $*/in_hubs.gr.gz
+
+.PRECIOUS: %/hubs.gr.gz
+%/hubs.gr.gz: %/walking_graph.gr.gz %/stops.txt hltrans
+	gunzip -c $< | ./hltrans hubs - $*/stops.txt | gzip -c > $@
+
+%/out_hubs.gr.gz: %/hubs.gr.gz
+	gunzip -c $< | grep -e '^o ' | cut -d' ' -f2-4 | gzip -c > $@
+
+%/in_hubs.gr.gz: %/hubs.gr.gz
+	gunzip -c $< | grep -e '^i ' | cut -d' ' -f2-4 | gzip -c > $@
+
+
+_output/%-hubsall.gr.gz: ex/%.gr.gz hltrans
+	mkdir -p _output
+	gunzip -c $< | ./hltrans hubs - | gzip -c > $@
+
+_output/%-clos.gr.gz: ex/%.gr.gz ex/%.stops hltrans
+	mkdir -p _output
+	gunzip -c $< | ./hltrans closure - ex/$*.stops | cut -d' ' -f2-4 | gzip -c > $@
+
+
+
+
+%.stop_paris:
+	lab () { while [ $$# -gt 0 ]; do st=$$1; stop=`grep -e ",$${st}[^0-9]" labels/stop_label.csv | sed -e 's/,.*//'`; echo -n "$$st is "; grep -e "^$$stop," gtfs/stops.txt; shift; done } ;\
+	points () { lab $$* | cut -d , -f5,6 | awk '{printf "&p=%s", $$1}'; echo ""; } ;\
+	pts () { lab $$*; points $$*; } ;\
+	cd ../../../../dev/pt/Public-Transit-Data/Paris ; pts $*
+
+%/walking_graph.gr.gz: %/walking_graph_seconds.gr.gz %/transfers.csv.gz %/stops.txt
+	cd $*; \
+	gunzip -c transfers.csv.gz | tail -n +2 | tr "," " " | gzip -c > transfers.gr.gz ;\
+	cat stops.txt | awk '{print $$1,$$1,0;}' | gzip -c > stops_self_loops.gr.gz ;\
+	gunzip -c transfers.gr.gz walking_graph_seconds.gr.gz stops_self_loops.gr.gz | gzip -c > walking_graph.gr.gz
+
+
+three: raptor.o
+	echo $$HOSTNAME $$OAR_JOB_ID
+	for dir in London Paris Switzerland; do \
+		./raptor.o -query-file=queries-all.csv -exit $$dir > CSA/$${dir}_times.csv ;\
+	done
+
+%.Raptor: raptor.o
+	echo $$HOSTNAME $$OAR_JOB_ID
+	./raptor.o $*
+
+threeCSA:
+	$(eval HUNDR := grep -v -e '^[0-9]$$$$' -e '^[0-9][0-9]$$$$' -e '^[0-9][0-9][1-9]$$$$' -e '^[0-9][1-9][0-9]$$$$')
+	echo $$HOSTNAME $$OAR_JOB_ID
+	cd CSA/build ;\
+	for dir in London Paris Switzerland; do \
+	for opt in '' '--hl' '--profile' '--hl --profile'; do \
+		d="------------" ;\
+		echo "$$d csa $$opt $$dir $$d"; ./csa $$opt $$dir | $(HUNDR) ;\
+	done ;\
+	done
+
+%.fourthCSA:
+	echo $$HOSTNAME $$OAR_JOB_ID
+	cd CSA/build ;\
+	opt='--hl --profile' ;\
+	b="------------ csa $$opt"; e="-------------" ;\
+	echo "$$b $* $$e"; ./csa $$opt $* ;\
+
+# ------------------- public transit data --------------
+
+PT_DIRS:=London Paris Switzerland
+
+alleat:
+	echo $$HOSTNAME $$OAR_JOB_ID
+	for dir in $(PT_DIRS); do \
+		for qry in queries queries-2h queries-loc10pct; do \
+			echo $$dir $$qry; \
+			make $${dir}/$${qry}.csv.eat; \
+		done; \
+	done
+
+alleatpar:
+	echo $$HOSTNAME $$OAR_JOB_ID
+	make London/arrival_times.csv2 & \
+	(sleep 10; make Paris/arrival_times.csv2) & \
+	(sleep 20; make Switzerland/arrival_times.csv2)
+
+%.three:
+	for dir in London Paris Switzerland; do \
+		make $${dir}/$*; \
+	done
+
+%.rioc3: _scp
+	for dir in London Paris Switzerland; do \
+		make $${dir}/$*.rioc RESA=yes; \
+	done
+
+%.eat: raptor.o
+	$(eval DIR:=`dirname $*`)
+	$(eval QRY:=`basename $*`)
+	./raptor.o $(DIR) -query-file=$(QRY) -arrival-times > $@
+
+%.cp:
+	cp $* /Volumes/files.inria.fr/gang/road/graphs/public_transport/$*
+	scp $* rioc.inria.fr:graph/cpp/$*
+
+
+# ---------------- queries -------------------
+
+%/arrival_times.csv:
+	./raptor.o $* -query-file=queries-all.csv -arrival-times > $@
+
+%/queries-loc10pct.csv: %/arrival_times.csv
+	(echo "source,target,time"; tail -n +2 /tmp/$*_times.csv | awk -F, '{ print $$1, $$2, $$3, $$6-$$3}' | sort -n -k 4 | head -n 1001 | tr " " "," | cut -d, -f1-3) > $@
+
+%/queries-2h.csv: %/arrival_times.csv
+	(echo "source,target,time"; tail -n +2 /tmp/$*_times.csv | awk -F, '{if ($$4 - $$3 <= 7200) print $$1","$$2","$$3}') | head -n 1001 > $@
+
+%/queries-4h.csv: %/arrival_times.csv
+	(echo "source,target,time"; tail -n +2 /tmp/$*_times.csv | awk -F, '{if ($$4 - $$3 <= 14400) print $$1","$$2","$$3}') | head -n 1001 > $@
+
+
+# ------------- manage running ---------------
+
+%.force:
+	rm -f $*; make $*
+
+clean:
+	rm -f test *~ src/*~
+	rm -fr test.dSYM
+
+%.rioc: _scp
+	$(eval ALL:=nodes=1/cpu=2/core=6,walltime=96:00:00)
+	$(eval CPU:=$(if $(RESA),$(ALL),nodes=1/cpu=1/core=$(if $(CORE),$(CORE),1),walltime=24:00:00))
+	echo $(CPU)
+	ssh rioc.inria.fr 'cd graph/cpp; oarsub -p mem\>=30 -l $(CPU) "make $*"; sleep 5; echo; echo " --- stdout:"; cat  `ls OAR.*.stdout | tail -n 1`; sleep 10; echo; echo " ---stderr:"; cat  `ls OAR.*.stderr | tail -n 1`; echo'
+
+stat:
+	ssh rioc.inria.fr oarstat
+
+_scp: myMakefile Makefile $(HDRS) $(CTRS)
+	rsync -v -e ssh --inplace -r --exclude '*~' --exclude '#*' myMakefile Makefile src rioc.inria.fr:graph/cpp/
+	cp -f Makefile myMakefile
+	touch $@
+
+# ------------------ test some macros -----------------------
+
+t:
+	$(eval ALL:=$(if $(ALL),yes,no))
+	echo $(ALL)
+
+define MAC
+1
+2
+3 4
+endef
+export MAC
+mac:
+	echo "$$MAC" 
+

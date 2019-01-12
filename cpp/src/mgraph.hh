@@ -66,8 +66,6 @@ public:
     }
 
     void set_edges(const std::vector<edge> &edg, V n = 0) {
-        if (sdeg != nullptr) delete[] sdeg;
-        if (adj != nullptr) delete[] adj;
         if (n == 0) {
             for (auto const e : edg)
                 n = std::max(n, std::max(e.src, e.dst) + 1);
@@ -183,9 +181,10 @@ public:
     void sort_neighbors_by_weight() {
         for (V u = 0; u < n_; ++u) {
             size_t e = sdeg[u], f = sdeg[u+1];
-            std::sort(adj+e, adj+f, [](const edge_head &e, const edge_head &f) {
-                    return e.wgt < f.wgt;
-                });
+            std::sort(adj.begin() + e, adj.begin() + f,
+                      [](const edge_head &e, const edge_head &f) {
+                          return e.wgt < f.wgt;
+                      });
         }
     }
 
@@ -252,7 +251,7 @@ public:
         neighborhood(const mgraph &g, V u) : g(g), u(u) {}
         typedef typename std::vector<edge_head>::const_iterator eh_iterator;
         eh_iterator begin() const { return g.adj.cbegin() + g.sdeg[u]; }
-        eh_iterator end() const { return g.adj.cend() + g.sdeg[u+1]; }
+        eh_iterator end() const { return g.adj.cbegin() + g.sdeg[u+1]; }
     };
 
     neighborhood operator[](V u) const {
@@ -271,7 +270,7 @@ public:
         edg_iterator(const mgraph &g, V u, size_t e) : g(g), u(u), e(e) {}
         //edg_iterator(edg_iterator &&o) : g(o.g), g u(v.u) {}
         edge operator*() const { return edge(u, g.adj[e].dst, g.adj[e].wgt); }
-        vtx_iterator &operator++() {
+        edg_iterator &operator++() {
             ++e;
             if (e >= g.sdeg[u+1]) ++u;
             return *this;
@@ -337,10 +336,14 @@ namespace unit {
                 edg.push_back(graph::edge(u, rand() % n, 1));
             }
         }
-        std::cerr << "mgraph_test: ";
+        std::cerr << "mgraph_test: scan graph\n";
         graph g(n, edg);
         for (int u : g) {
             for (int v : g[u]) std::cerr << u <<","<< v <<" ";
+        }
+        std::cerr << "\n";
+        for (graph::edge e : g.edges()) {
+            std::cerr << e.src <<","<< e.dst <<" ";
         }
         std::cerr << "\n";
 
@@ -348,9 +351,11 @@ namespace unit {
         auto sub = g.subgraph([](int u) { return u % 2 == 0; });
         graph h = sub.first;
         std::vector<int> vtx = sub.second;
-        std::cerr << "mgraph_test: ";
+        std::cerr << "mgraph_test: subgraph\n";
         for (int u : h) {
-            for (int v : h[u]) std::cerr << vtx[u] <<","<< vtx[v] <<" ";
+            for (int v : h[u]) {
+                std::cerr << vtx[u] <<","<< vtx[v] <<" ";
+            }
         }
         std::cerr << "\n";
         g = g.reverse().reverse();
@@ -371,7 +376,10 @@ namespace unit {
         vtx = sub.second;
         std::cerr << "mgraph_test: ";
         for (int u : h) {
-            for (int v : h[u]) std::cerr << vtx[u] <<","<< vtx[v] <<" ";
+            int iv = 0;
+            for (int v : h[u]) {
+                std::cerr << vtx[u] <<","<< vtx[v] <<" ";
+            }
         }
         std::cerr << "\n";
         hm = 0;
