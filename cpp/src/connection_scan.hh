@@ -9,11 +9,7 @@
 #include "timetable.hh"
 #include "traversal.hh"
 
-/*
 
-\com{LV}{Tricky note}
-Note that a special care has to be taken when a stop $u$ is also a hub $h$. The two roles must be treated separately. In particular, two arrival times have to be maintained for each role. When the arrival time is updated by walk, both $\tau(u)$ and $\tau(h)$ must be updated. However, when it is updated by traversing a connection, only $\tau(u)$ is updated. It would be incorrect to update $\tau(h)$ as well: when scanning a connection $v,w$ at time $t$, we update arrival time to $v$ through walking from $h$ and must ignore any update at $u$ coming from a connection within interval $[t-d(h,v),t]$. 
-*/
 
 class connection_scan {
 private:
