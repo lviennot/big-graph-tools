@@ -10,6 +10,7 @@
 #include <algorithm>
 
 #include "edge.hh"
+#include "int_util.hh"
 
 /**
  * Minimalist graph implementation when vertices are ints from 0 to n-1.
@@ -228,30 +229,22 @@ public:
     //         f(u, e.dst, e.wgt);
     //
 
-    class vtx_iterator {
-        V u;
-    public:
-        vtx_iterator(V u) : u(u) {}
-        //vtx_iterator(vtx_iterator &&o) : u(o.u) {}
-        V operator*() const { return u; }
-        vtx_iterator &operator++() { ++u; return *this;}
-        bool operator!=(const vtx_iterator& o) { return u != o.u; }
-    };
-    
-    vtx_iterator begin() const { return vtx_iterator(0); }
-    vtx_iterator end() const { return vtx_iterator(n_); }
+    int_iterator<V> begin() const { return int_iterator<V>(0); }
+    int_iterator<V> end() const { return int_iterator<V>(n_); }
 
     const mgraph& nodes() const { return *this; }
+    irange<V> nodes_rev() const { return irange<V>(n_ - 1, 0 - 1, false); }
 
     
     class neighborhood {
         const mgraph &g;
         const V u;
-    public:
+     public:
         neighborhood(const mgraph &g, V u) : g(g), u(u) {}
         typedef typename std::vector<edge_head>::const_iterator eh_iterator;
         eh_iterator begin() const { return g.adj.cbegin() + g.sdeg[u]; }
         eh_iterator end() const { return g.adj.cbegin() + g.sdeg[u+1]; }
+        const edge_head *b, *e;
     };
 
     neighborhood operator[](V u) const {
@@ -262,13 +255,36 @@ public:
     }
     neighborhood neighbors(V u) const { return (*this)[u]; }
 
+    class neighborhood_rev {
+    public:
+        class rev_eh_iterator {
+            const edge_head *eh;
+        public:
+            rev_eh_iterator(const  edge_head *eh) : eh(eh) {}
+            const edge_head &operator*() const { return *eh; }
+            rev_eh_iterator &operator++() { --eh; return *this; }
+            bool operator!=(const rev_eh_iterator& o) { return eh != o.eh; }
+        };
+    private:
+        rev_eh_iterator b, e;
+    public:
+        neighborhood_rev(const mgraph &g, V u)
+            : b(g.adj.data() + g.sdeg[u+1] - 1),
+              e(g.adj.data() + g.sdeg[u] - 1) { assert(u >= 0 && u < g.n_); }
+        rev_eh_iterator begin() const { return b; }
+        rev_eh_iterator end() const { return e; }
+    };
+
+    neighborhood_rev neighbors_rev(V u) const {
+        return neighborhood_rev(*this, u);
+    }
+
     class edg_iterator {
         const mgraph &g;
         V u;
         size_t e;
     public:
         edg_iterator(const mgraph &g, V u, size_t e) : g(g), u(u), e(e) {}
-        //edg_iterator(edg_iterator &&o) : g(o.g), g u(v.u) {}
         edge operator*() const { return edge(u, g.adj[e].dst, g.adj[e].wgt); }
         edg_iterator &operator++() {
             ++e;
@@ -280,10 +296,8 @@ public:
 
     class edge_set {
         const mgraph &g;
-        V u;
-        size_t e;
     public:
-        edge_set(const mgraph &g) : g(g), u(0), e(0) {}
+        edge_set(const mgraph &g) : g(g) {}
         edg_iterator begin() const { return edg_iterator(g, 0, 0); }
         edg_iterator end() const { return edg_iterator(g, g.n_, g.m()); }
     };
@@ -344,6 +358,10 @@ namespace unit {
         std::cerr << "\n";
         for (graph::edge e : g.edges()) {
             std::cerr << e.src <<","<< e.dst <<" ";
+        }
+        std::cerr << "\n";
+        for (int u : g.nodes_rev()) {
+            for (int v : g.neighbors_rev(u)) std::cerr << u <<","<< v <<" ";
         }
         std::cerr << "\n";
 

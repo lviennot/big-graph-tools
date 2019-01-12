@@ -387,6 +387,6 @@ int main (int argc, char **argv) {
 
 
     // ------------------------ end -------------------------
-    main_log.cerr() << "end\n";
+    main_log.cerr() << "end "<< dir <<"\n";
 
 }

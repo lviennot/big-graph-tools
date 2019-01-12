@@ -16,6 +16,7 @@ ch: src/CH.cc $(HDRS)
 gtfs2graph: src/gtfs2graph.cc $(HDRS)
 	g++ -std=c++11 -O3 -g -rdynamic -pthread -o $@ $<
 
+test: test.o
 
 %.o: src/%.cc $(HDRS)
 	g++ -std=c++11 -O3 -g -rdynamic -pthread $(LIBS) -o $@ $<
@@ -29,6 +30,11 @@ unit: unit.og
 
 %.og: src/%.cc $(HDRS)
 	g++ -std=c++11 -g -rdynamic -pthread $(LIBS) -o $@ $<
+
+clean:
+	rm -f test *~ src/*~
+	rm -fr test.dSYM
+
 
 
 # -------------------- walking graph ------------------
@@ -116,13 +122,12 @@ threeCSA:
 
 PT_DIRS:=London Paris Switzerland
 
-alleat:
-	echo $$HOSTNAME $$OAR_JOB_ID
-	for dir in $(PT_DIRS); do \
-		for qry in queries queries-2h queries-loc10pct; do \
-			echo $$dir $$qry; \
-			make $${dir}/$${qry}.csv.eat; \
-		done; \
+alleat: queries.csv.eat.rioc3
+
+bigeat:
+	for qry in queries queries-2h queries-loc10pct; do \
+		echo $$dir $$qry; \
+		make $${qry}.csv.eat.rioc3; \
 	done
 
 alleatpar:
@@ -138,13 +143,23 @@ alleatpar:
 
 %.rioc3: _scp
 	for dir in London Paris Switzerland; do \
-		make $${dir}/$*.rioc RESA=yes; \
+		make $${dir}/$*.rioc RESA=yes; sleep 1;\
 	done
 
 %.eat: raptor.o
 	$(eval DIR:=`dirname $*`)
 	$(eval QRY:=`basename $*`)
 	./raptor.o $(DIR) -query-file=$(QRY) -arrival-times > $@
+
+%.CSA:
+	$(eval HUNDR := grep -v -e '^[0-9]$$$$' -e '^[0-9][0-9]$$$$' -e '^[0-9][0-9][1-9]$$$$' -e '^[0-9][1-9][0-9]$$$$')
+	cd CSA/build ;\
+	for opt in '' '--hl' '--profile' '--hl --profile'; do \
+		d="------------" ;\
+		echo "$$d csa $$opt $* $$d"; ./csa $$opt $* | $(HUNDR) ;\
+	done
+
+
 
 %.cp:
 	cp $* /Volumes/files.inria.fr/gang/road/graphs/public_transport/$*
@@ -157,23 +172,22 @@ alleatpar:
 	./raptor.o $* -query-file=queries-all.csv -arrival-times > $@
 
 %/queries-loc10pct.csv: %/arrival_times.csv
-	(echo "source,target,time"; tail -n +2 /tmp/$*_times.csv | awk -F, '{ print $$1, $$2, $$3, $$6-$$3}' | sort -n -k 4 | head -n 1001 | tr " " "," | cut -d, -f1-3) > $@
+	(echo "source,target,time"; tail -n +2 $^ | awk -F, '{ print $$1, $$2, $$3, $$6-$$3}' | sort -n -k 4 | head -n 1000 | tr " " "," | cut -d, -f1-3) > $@
+
+%/queries-loc30pct.csv: %/arrival_times.csv
+	(echo "source,target,time"; tail -n +2 $^ | awk -F, '{ print $$1, $$2, $$3, $$6-$$3, NR}' | sort -n -k 4 | head -n 3000 | sort -n -k 7 | head -n 1000 | tr " " "," | cut -d, -f1-3) > $@
 
 %/queries-2h.csv: %/arrival_times.csv
-	(echo "source,target,time"; tail -n +2 /tmp/$*_times.csv | awk -F, '{if ($$4 - $$3 <= 7200) print $$1","$$2","$$3}') | head -n 1001 > $@
+	(echo "source,target,time"; tail -n +2 $^ | awk -F, '{if ($$4 - $$3 <= 7200) print $$1","$$2","$$3}' | head -n 1000) > $@
 
 %/queries-4h.csv: %/arrival_times.csv
-	(echo "source,target,time"; tail -n +2 /tmp/$*_times.csv | awk -F, '{if ($$4 - $$3 <= 14400) print $$1","$$2","$$3}') | head -n 1001 > $@
+	(echo "source,target,time"; tail -n +2 $^ | awk -F, '{if ($$4 - $$3 <= 14400) print $$1","$$2","$$3}' | head -n 1000) > $@
 
 
 # ------------- manage running ---------------
 
 %.force:
 	rm -f $*; make $*
-
-clean:
-	rm -f test *~ src/*~
-	rm -fr test.dSYM
 
 %.rioc: _scp
 	$(eval ALL:=nodes=1/cpu=2/core=6,walltime=96:00:00)
@@ -184,12 +198,26 @@ clean:
 stat:
 	ssh rioc.inria.fr oarstat
 
+scp: _scp
+
 _scp: myMakefile Makefile $(HDRS) $(CTRS)
 	rsync -v -e ssh --inplace -r --exclude '*~' --exclude '#*' myMakefile Makefile src rioc.inria.fr:graph/cpp/
 	cp -f Makefile myMakefile
 	touch $@
 
+%.scp:
+	scp $* rioc.inria.fr:graph/cpp/$*
+
+
 # ------------------ test some macros -----------------------
+
+%.min_moy_max:
+	grep -v -e '^#' $* | tr " " "\t" | head -n 1 ;\
+	grep -v -e '^#' $* | tail -n +2 | awk -F, '{if($$4 < 100000000) print $$1, $$2, $$3, $$4-$$3, $$5-$$3, $$6-$$3, 100.*($$4-$$5)/($$5-$$3)}' | gawk 'BEGIN { cols=0; n=0; } { cols=NF; for (i=1; i<=NF; i++) { v=$$(i); sum[i]+=v; if (n == 0 || v > max[i]) max[i]=v; if (n == 0 || v < min[i]) min[i]=v; } n+=1; } END { for (i=1; i<=NF; i++) printf "%d\t",i; print ""; for (i=1; i<=NF; i++) printf "%d\t",min[i]; print "";  for (i=1; i<=NF; i++) printf "%d\t",sum[i]/n; print ""; for (i=1; i<=NF; i++) printf "%d\t",max[i]; print ""; print n; }'
+
+%.avg: 
+	make $*.min_moy_max
+
 
 t:
 	$(eval ALL:=$(if $(ALL),yes,no))

@@ -67,8 +67,25 @@ int main (int argc, char **argv) {
               <<  std::endl;
     t = top (t, "graph");
 
-    // ------------------------- dijkstra -----------------------
+    // ------------------------- perf test -----------------------
     traversal<graph> trav(n);
+    t = top(t, "trav");
+    if (argc == 3) {
+        std::srand(std::time(0)); 
+        int ntests = std::stoi(argv[2]);
+        size_t sum = 0;
+        for (int i = 0; i < ntests; ++i) {
+            int u = std::rand() % n;
+            trav.clear();
+            trav.strongly_connected_components(g);
+            sum += trav.nvis();
+        }
+        std::cerr << (sum / ntests) <<" nodes visited on average\n";
+        t = top(t, "traversals");
+        exit(0);
+    }
+
+    // ------------------------- dijkstra -----------------------
     int u = 0, v = n - 1;
     if (argc == 4) {
         u = vi[argv[2]] - 1;

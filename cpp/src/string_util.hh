@@ -1,7 +1,6 @@
 #ifndef STRING_UTIL_HH
 #define STRING_UTIL_HH
 
-#include "stdlib.h"
 #include "string.h"
 #include <iostream>
 

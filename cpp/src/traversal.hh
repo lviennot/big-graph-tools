@@ -399,7 +399,6 @@ public:
                 dfs(g, s, SCC);
             }
         }
-        std::cerr <<"nvis="<< nvis_ <<"\n";
         int nb = 0;
         for (int i = 0; i < nvis_; ++i) {
             V u = visit_[i];
