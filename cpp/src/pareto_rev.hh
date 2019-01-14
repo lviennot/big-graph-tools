@@ -1,5 +1,5 @@
-#ifndef PARETO_HH
-#define PARETO_HH
+#ifndef PARETO_REV_HH
+#define PARETO_REV_HH
 
 #include <assert.h>
 #include <stdio.h>
@@ -8,16 +8,17 @@
 #include <utility>
 
 /**
- * 2D Pareto set in a sorted vector, i.e. the points form a decreasing curve:
- * while scanning the vector, x increases while y decreases.
+ * 2D Pareto set in a sorted vector in reverse order, i.e. the points 
+ * still form an increasing curve, but are read in decreasing order of x coord:
+ * while scanning the vector, x decreases  while y increases.
  *
  */
 
 
 template<typename W>
 
-class pareto {
-    // 2D Pareto set
+class pareto_rev {
+    // 2D Pareto_Rev set
 
 public:
 
@@ -33,53 +34,53 @@ public:
     };
     
     std::vector<point> pts;
-    
+    typename std::vector<point>::const_reverse_iterator last_bellow;
 
-    pareto(size_t cap=48) { pts.reserve(cap); }
+    pareto_rev(size_t cap=48) { pts.reserve(cap); last_bellow = pts.rend(); }
 
-    pareto(const pareto &p) : pts(p.pts) {}
+    pareto_rev(const pareto_rev &p) : pts(p.pts) {}
 
-    pareto& operator=(const pareto& p) {
+    pareto_rev& operator=(const pareto_rev& p) {
         if (this != &p) {
             pts = p.pts;
+            last_bellow = p.pts.rbegin();
         }
         return *this;
     }
 
     size_t size() { return pts.size(); }
 
-    void clear() { pts.clear(); }
+    void clear() { pts.clear(); last_bellow = pts.rend(); }
 
     void check() {
         W x, y;
         bool first = true;
         for (auto p : pts) {
             if (first) { first = false; }
-            else { assert(x <= p.x && y >= p.y && (x < p.x || y > p.y)); }
+            else { assert(x >= p.x && y <= p.y && (x > p.x || y < p.y)); }
             x = p.x; y = p.y;
         }
     }
 
-    W smallest_x_bellow(W x_max, W y_max) { // returns the x coord. of the first point bellow y
-        for (auto p : pts) {
-            if (p.x >= x_max) return x_max;
-            if (p.y <= y_max) return p.x;
+    W smallest_x_bellow(W x_max, W y_max) { // returns the minimal x coord. of a point bellow y_max, x_max if none exists
+        auto pts_end = pts.crend();
+        for (auto p = pts.crbegin(); p != pts_end; ++p) {
+            if (p->y <= y_max) return p->x;
         }
         return x_max;
     }
 
     bool add(W x, W y) { // returns true if point was added
         bool insert = false;
-        auto pts_end = pts.end();
+        auto p = pts.rbegin(), pts_end = pts.rend();
         auto pos = pts_end;
         point tmp(x, y);
         size_t n_dom = 0;
-        for (auto p = pts.begin(); p != pts_end; ++p) {
+        for ( ; p != pts_end; ++p) {
             if (p->x <= x && p->y <= y) return false; // dominated
             if (p->x < x) continue;
             // x <= p->x
             if (y <= p->y) {// *p is dom (y < p->y if x == p->x as x,y not dom) 
-                ++n_dom;
                 if ( ! insert) {
                     std::swap(*p, tmp);
                     insert = true;
@@ -87,50 +88,41 @@ public:
                     pos = p;
                 }
             } else { // p->y <= y => x < p->x as x,y not dom
-                if ( ! insert) {
-                    pts.insert(p, tmp);
-                    return true;
-                } else if (pos != pts_end) {
-                    std::swap(*pos, *p);
-                    ++pos;
-                }
+                break;
             }
         }
-        if (insert) {
-            pts.resize(pts.size() - n_dom + 1);
-        } else {
-            pts.push_back(tmp);
+        if ( ! insert) {
+            pts.insert(p.base(), tmp); // base of rev it is after
+            return true;
+        } else if (pos != pts_end) { // delete after p up to pos
+            pts.erase(p.base(), pos.base());
         }
         return true;
     }
 
     bool del_dominated(W x, W y) { // returns true if x,y dominates some elt
-        auto pos = pts.end();
+        auto p = pts.rbegin(), pts_end = pts.rend();
+        auto pos = pts_end;
         size_t n_dom = 0;
         bool first_dom = true;
-        for (auto p = pts.begin() ; p != pts.end() ; ++p) {
+        for ( ; p != pts_end ; ++p) {
             if (p->x < x && p->y <= y) return false; // dominated
             if (p->x < x) continue;
             // x <= p->x
-            if (y < p->y) { // *p is dom
+            if (y <= p->y) { // *p is dom
                 ++n_dom;
                 if (first_dom) {
                     pos = p;
                     first_dom = false;
                 }
             } else {
-                if (first_dom) {
-                    return false;
-                } else if (pos != pts.end()) {
-                    std::swap(*pos, *p);
-                    ++pos;
-                }
+                break;
             }
         }
         if (first_dom) {
             return false;
         } else {
-            pts.resize(pts.size() - n_dom);
+            pts.erase(p.base(), pos.base());
             return true;
         }
     }
@@ -143,8 +135,8 @@ public:
     }
 
     bool dominates(W x, W y) {
-        auto pts_end = pts.end();
-        for (auto p = pts.begin(); p != pts_end; ++p) {
+        auto pts_end = pts.rend();
+        for (auto p = pts.rbegin(); p != pts_end; ++p) {
             if (p->x <= x && p->y <= y) return true; // dominated
             if (p->x >= x) return false; // (y < p->y if x == p->x)
         }
@@ -165,28 +157,44 @@ public:
 
 namespace unit {
 
-    void pareto_test(size_t n, int rnd = 100) {
-        std::cerr <<"pareto_test: sizeof(int)="<< sizeof(int)
+    void pareto_rev_test(size_t n, int rnd = 100) {
+        std::cerr <<"pareto_rev_test: sizeof(int)="<< sizeof(int)
                   <<" ---------- \n";
-        pareto<int> ps(n);
-        std::vector<pareto<int>::point> dom;
+        pareto_rev<int> ps(n);
+        std::vector<pareto_rev<int>::point> dom;
         for (int i = 0; i < n; ++i) {
-            int x = rand() % rnd, y = - rand() % rnd;
-            std::cout <<"add "<< x <<","<< y <<"\n";
+            int x = rand() % rnd, y = rand() % rnd;
+            std::cout <<"add "<< x <<","<< y <<" ";
             bool dominated = ps.dominates(x, y);
+            std::cout <<" dom="<< dominated <<"\n";
             if ( ! ps.add(x, y)) {
+                ps.print();
                 assert(dominated);
-                dom.push_back(pareto<int>::point(x,y));
+                dom.push_back(pareto_rev<int>::point(x,y));
             } else {
+                ps.print();
                 assert( ! dominated);
             }
-            ps.print();
             ps.check();
             for (auto p : dom) assert(ps.dominates(p.x, p.y));
             y = - rand() % rnd;
             x = ps.smallest_x_bellow(rnd, y);
             std::cout <<"smallest_x_bellow ("<< y <<") = "<< x <<"\n";
-            for (auto p : ps.pts) assert(p.y > y || p.x >= x);
+            for (auto p : ps.pts) assert(p.y > y || p.x >= x || x == rnd);
+            if (i % (n/2) == n/8) {
+                dom.clear();
+                int x = rand() % (rnd/4+1), y = rand() % (rnd/4+1);
+                pareto_rev<int> xy(1);
+                xy.add(x,y);
+                int n_dom = 0;
+                for (auto p : ps.pts) if (xy.dominates(p.x, p.y)) ++n_dom;
+                int ps_size = ps.size();
+                bool dom = ps.del_dominated(x, y);
+                std::cout <<"............del_dominated "<< x <<" "<< y <<" : "
+                          << n_dom <<"\n";
+                assert(dom == (n_dom > 0));
+                assert(n_dom == ps_size - ps.size());
+            }
         }
         ps.add(9,4);
         ps.print();
@@ -198,4 +206,4 @@ namespace unit {
     
 
 
-#endif // PARETO_HH
+#endif // PARETO_REV_HH

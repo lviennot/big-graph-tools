@@ -144,11 +144,17 @@ alleatpar:
 	done
 
 %.raptor: raptor.o
+	echo $$HOSTNAME $$OAR_JOB_ID
 	make $*
 
 %.rioc3: _scp
 	for dir in London Paris Switzerland; do \
 		make $${dir}/$*.raptor.rioc RESA=yes; sleep 1;\
+	done
+
+riocCSA3: _scp
+	for dir in London Paris Switzerland; do \
+		make $${dir}.CSA.rioc RESA=yes; sleep 1;\
 	done
 
 %.eat:
@@ -157,6 +163,7 @@ alleatpar:
 	./raptor.o $(DIR) -query-file=$(QRY) -arrival-times > $@
 
 %.CSA:
+	echo $$HOSTNAME $$OAR_JOB_ID
 	$(eval HUNDR := grep -v -e '^[0-9]$$$$' -e '^[0-9][0-9]$$$$' -e '^[0-9][0-9][1-9]$$$$' -e '^[0-9][1-9][0-9]$$$$')
 	cd CSA/build ;\
 	for opt in '' '--hl' '--profile' '--hl --profile'; do \
@@ -259,7 +266,7 @@ _scp: myMakefile Makefile $(HDRS) $(CTRS)
 	touch $@
 
 %.scp:
-	scp $* rioc.inria.fr:graph/cpp/$*
+	$(RSYNC) $* rioc.inria.fr:graph/cpp/
 
 
 # ------------------ test some macros -----------------------

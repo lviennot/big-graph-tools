@@ -131,7 +131,9 @@ int main (int argc, char **argv) {
             (dir + get_opt(argc, argv, "-query-file=", "queries.csv"),
              3, "source", "target", "time");
         for (auto r : rows) {
+            if (has_opt(argc, argv, "-1") && n_q >= 1) break;
             if (has_opt(argc, argv, "-10") && n_q >= 10) break;
+            if (has_opt(argc, argv, "-100") && n_q >= 100) break;
             int src = ttbl.id_to_station[r[0]];
             int dst = ttbl.id_to_station[r[1]];
             int t = std::stoi(r[2]);
@@ -170,7 +172,89 @@ int main (int argc, char **argv) {
     }
     // */
 
+    // go profile CSA
+    sum = 0, n_ok = 0;
+    bool prescan = has_opt(argc, argv, "-csa-profile-prescan");
+    for (auto q : queries) {
+        int src = std::get<0>(q);
+        int dst = std::get<1>(q);
+        std::cout << src <<"(="<< ttbl.station_id[src] <<") "
+                  << dst <<"(="<< ttbl.station_id[dst] <<") " <<" : \n";
+        int ntrips = csa.profile(src, dst, 0, 24*3600, false, true,
+                                 chg, km, prescan);
+        std::cout << ntrips <<"\n";
+        sum += ntrips;
+        ++n_ok;
+    }
+    main_log.cerr(t) << n_q << " Profile CSA queries done, avg_ntrips = "
+                     << (sum / n_ok)
+                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
+    t = main_log.lap();
+    // */    
 
+
+    // go profile Raptor
+    sum = 0, n_ok = 0;
+    for (auto q : queries) {
+        int src = std::get<0>(q);
+        int dst = std::get<1>(q);
+        std::cout << src <<" "<< dst <<" : \n";
+        int ntrips = rpt.profile(rev_rpt, src, dst, 0, 24*3600,
+                                 false, true, km);
+        std::cout << ntrips <<"\n";
+        sum += ntrips;
+        ++n_ok;
+    }
+    main_log.cerr(t) << n_q << " Profile Raptor queries done, avg_ntrips = "
+                     << (sum / n_ok)
+                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
+    t = main_log.lap();
+
+
+    if (has_opt(argc, argv, "-exit-pr")) exit(0);
+
+    
+    // go profile HLCSA
+    sum = 0, n_ok = 0;
+    for (auto q : queries) {
+        int src = std::get<0>(q);
+        int dst = std::get<1>(q);
+        std::cout << src <<" "<< dst <<" : ";
+        int ntrips = csa.profile(src, dst, 0, 24*3600, hub, trf,
+                                 chg, km, prescan);
+        std::cout << ntrips <<"\n";
+        sum += ntrips;
+        ++n_ok;
+    }
+    main_log.cerr(t) << n_q << " Profile HLCSA queries done, avg_ntrips = "
+                     << (sum / n_ok)
+                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
+    t = main_log.lap();
+    // */    
+
+    
+    // go profile HLRaptor
+    sum = 0, n_ok = 0;
+    for (auto q : queries) {
+        int src = std::get<0>(q);
+        int dst = std::get<1>(q);
+        std::cout << src <<" "<< dst <<" : ";
+        int ntrips = rpt.profile(rev_rpt, src, dst, 0, 24*3600,
+                                 hub, trf, km);
+        std::cout << ntrips <<"\n";
+        sum += ntrips;
+        ++n_ok;
+    }
+    main_log.cerr(t) << n_q << " Profile HLRaptor queries done, avg_ntrips = "
+                     << (sum / n_ok)
+                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
+    t = main_log.lap();
+    // */    
+
+
+    if (has_opt(argc, argv, "-exit-pr-hl")) exit(0);
+    
+    
     //* Arrival times
     if (has_opt(argc, argv, "-arrival-times")) {
         std::cout <<"src,dst,tdep,eat,eat_Unrestricted_Walking,eat_Walk_Only\n";
@@ -179,13 +263,6 @@ int main (int argc, char **argv) {
             int src = std::get<0>(q);
             int dst = std::get<1>(q);
             int t = std::get<2>(q);
-            if (has_opt(argc, argv, "-skip") && ttbl.station_id[src] != "4561")
-                continue;
-            src = ttbl.id_to_station[get_opt(argc, argv, "-src=",
-                                             ttbl.station_id[src])];
-            dst = ttbl.id_to_station[get_opt(argc, argv, "-dst=",
-                                         ttbl.station_id[dst])];
-            t = get_int_opt(argc, argv, "-t=", t);
             int arr1 = rpt.earliest_arrival_time(src, dst, t, false, true,
                                                  chg, km);
             int arr2 = csa.earliest_arrival_time(src, dst, t, false, true,
@@ -200,14 +277,16 @@ int main (int argc, char **argv) {
                       <<","<< t <<","<< arr1 <<","<< arrHL1
                       <<","<< (t + rpt.walking_time(src, dst)) <<"\n";
             std::cout.flush();
+            ++n_ok;
         }
-        ++n_ok;
         main_log.cerr(t) << n_ok << " arrival times\n";
         t = main_log.lap();
     }
     // */
+
     
     if (has_opt(argc, argv, "-exit")) exit(0);
+    
     
     // go Raptor restricted walk
     sum = 0, n_ok = 0;
@@ -312,23 +391,6 @@ int main (int argc, char **argv) {
     t = main_log.lap();
 
 
-    // go profile Raptor
-    sum = 0, n_ok = 0;
-    for (auto q : queries) {
-        int src = std::get<0>(q);
-        int dst = std::get<1>(q);
-        int ntrips = rpt.profile(rev_rpt, src, dst, 0, 24*3600,
-                                 false, true, km);
-        //std::cout << ntrips <<"\n";
-        sum += ntrips;
-        ++n_ok;
-    }
-    main_log.cerr(t) << n_q << " Profile Raptor queries done, avg_ntrips = "
-                     << (sum / n_ok)
-                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
-    t = main_log.lap();
-
-
     //* go Pareto
     sum = 0, n_ok = 0;
     for (auto q : queries) {
@@ -366,24 +428,6 @@ int main (int argc, char **argv) {
     t = main_log.lap();
     // */
 
-
-    // go profile HLRaptor
-    sum = 0, n_ok = 0;
-    for (auto q : queries) {
-        int src = std::get<0>(q);
-        int dst = std::get<1>(q);
-        //std::cout << src <<" "<< dst <<" :\n";
-        int ntrips = rpt.profile(rev_rpt, src, dst, 0, 24*3600,
-                                 hub, trf, km);
-        //std::cout << ntrips <<"\n";
-        sum += ntrips;
-        ++n_ok;
-    }
-    main_log.cerr(t) << n_q << " Profile HLRaptor queries done, avg_ntrips = "
-                     << (sum / n_ok)
-                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
-    t = main_log.lap();
-    // */    
 
 
     // ------------------------ end -------------------------

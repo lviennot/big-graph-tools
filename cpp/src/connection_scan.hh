@@ -7,6 +7,7 @@
 #include <set>
 
 #include "timetable.hh"
+#include "mgraph.hh"
 #include "traversal.hh"
 #include "pareto.hh"
 
@@ -21,7 +22,7 @@ private:
     typedef timetable::T T;
     
     typedef pareto<T> pset;
-    typedef pset::point point;
+    typedef pset::point point;  // x = est.arr.time, y = - last.dep.time
     std::vector<pset> all_pareto;
 
     friend class raptor;
@@ -38,7 +39,7 @@ private:
             : trip(tr), from(u), to(v), dep(d), arr(a), index(i) {}
     };
 
-    std::vector<T> st_eat, h_eat; // earliest arrival time at station, hub
+    std::vector<T> st_eat, h_eat, wlk_dst; // earliest arrival time at station, hub, walking time to destination
     std::vector<std::vector<S> > parent; // a stop used at previous station
     std::vector<connection> conn;
     std::vector<std::pair<R, int> > trip_route;
@@ -50,7 +51,7 @@ private:
     
     // transitively closed transfers:
     typedef timetable::graph graph;
-    graph transfers, rev_inhubs;
+    graph transfers, rev_transfers, rev_inhubs;
 
     const int not_stop_index = -1;
     static const int ntrips_max = 48, not_trip_index = -1;
@@ -58,7 +59,7 @@ private:
 public:
     connection_scan(const timetable &tt)
         : ttbl(tt), n_tr(0),
-          st_eat(tt.n_h), h_eat(tt.n_h),
+          st_eat(tt.n_h), h_eat(tt.n_h), wlk_dst(tt.n_h),
           all_pareto(tt.n_h),
           n_trips(tt.n_h), eat_trip(tt.n_h)
     {
@@ -136,21 +137,20 @@ public:
             //    std::cerr << c.from <<" -> "<< c.to <<"\n";
         }
 
-        T last = std::max(3600*24, conn.back().dep);
-        conn_at.insert(conn_at.end(), std::min(last+1, 48*3600), 0);
+        T last = std::min(std::max(3600*24, conn.back().dep), 48*3600);
+        conn_at.insert(conn_at.end(), last+1, 0);
         T t = 1;
         for (int i = 0; i < conn.size() ; ++i) {
-            while (t < conn[i].dep) { conn_at[t++] = i; }
-            if (t == conn[i].dep) conn_at[t++] = i;
+            while (t < conn[i].dep && t <= last) { conn_at[t++] = i; }
+            if (t == conn[i].dep && t <= last) conn_at[t++] = i;
         }
         //
         last = std::max(3600*24, conn.back().arr);
-        conn_at_last.insert(conn_at_last.end(), std::min(last+1, 48*3600),
-                            conn.size() - 1);
+        conn_at_last.insert(conn_at_last.end(), last+1, conn.size() - 1);
         t = last - 1;
         for (int i = conn.size() - 1; i != -1; --i) {
-            while (t > conn[i].arr) { conn_at_last[t--] = i; }
-            if (t == conn[i].arr) conn_at_last[t--] = i;
+            while (t > conn[i].arr && t >= 0) { conn_at_last[t--] = i; }
+            if (t == conn[i].arr && t >= 0) conn_at_last[t--] = i;
         }
 
         // transitive closure of transfer graph:
@@ -159,7 +159,7 @@ public:
         for (ST st = 0; st < tt.n_st; ++st) {
             trav.clear();
             trav.dijkstra(tt.transfers, st);
-            for (int i = 1; i < trav.nvis(); ++i) {
+            for (int i = 0; i < trav.nvis(); ++i) {
                 ST ot = trav.visit(i);
                 T t = trav.dist(ot);
                 if (ot < tt.n_st) transf.push_back(graph::edge(st, ot, t));
@@ -173,16 +173,19 @@ public:
         assert(asym <= 100); // strange network otherwise
 
         rev_inhubs = tt.inhubs.reverse(); // not sorted by weight
+        rev_transfers = transfers.reverse();
     }
 
     T earliest_arrival_time(const ST src, const ST dst, const T t_dep,
                             const bool use_hubs = true,
                             const bool use_transfers = false,
                             const T min_chg_time = 60,
-                            const int ntr_max = ntrips_max // FIXME : works only when the number of trips remains <= ntr_max
+                            const int ntr_max = ntrips_max, // FIXME : works only when the number of trips remains <= ntr_max
+                            const T t_end = 0 // scan until t_end reached (used for profile pre-processing)
                             ) {
 
         assert(ntr_max <= ntrips_max);
+        assert(0 <= t_dep && t_dep <= 3600*24);
         assert(min_chg_time > 0); // 0 is problematic with 0 delay connections
 
         T eat_estim = ttbl.t_max;
@@ -262,21 +265,18 @@ public:
         assert(conn[conn_at[t_dep]].dep >= t_dep);
         assert(conn_at[t_dep] == 0 || conn[conn_at[t_dep] - 1 ].dep < t_dep);
 
-        ST st_from, st_to, h;
-        int k;
-        
         for (int i = conn_at[t_dep]; i < conn.size() ; ++i) {
             const connection &c = conn[i];
-            if (c.dep >= st_eat[dst]) {
+            if (c.dep >= st_eat[dst] && c.arr > t_end) {
                 //std::cerr << i - conn_at[t_dep] << " conn scanned\n";
                 break; // target pruning
             }
-            st_from = ttbl.stop_station[c.from];
-            st_to = ttbl.stop_station[c.to];                
+            ST st_from = ttbl.stop_station[c.from];
+            ST st_to = ttbl.stop_station[c.to];                
             // do we need st_eat[st_from] ?
             if (use_hubs && trip_board[c.trip] == not_stop_index) {
                 for (auto f : rev_inhubs[st_from]) {
-                    k = n_trips[f.dst];
+                    int k = n_trips[f.dst];
                     if (k < ntr_max) {
                         update_eat(st_from, st_eat[f.dst] + f.wgt,
                                    (f.dst >= ttbl.n_st ? parent[k][f.dst]
@@ -337,12 +337,10 @@ public:
                     }
                     if (use_hubs) {
                         for (auto e : ttbl.outhubs[st_to]) {
-                            h = e.dst;
-                            if (st_eat[st_to] + e.wgt >= st_eat[dst])
+                            T t = st_eat[st_to] + e.wgt;
+                            if (t >= st_eat[dst])
                                 break; // target pruning
-                            update_eat(h, st_eat[st_to] + e.wgt,
-                                       c.to,
-                                       st_to,
+                            update_eat(e.dst, t, c.to, st_to,
                                        trip_ntrips[c.trip]);
                         }
                     }
@@ -438,77 +436,150 @@ public:
         cout <<"\n";
     }
 
-    pset profile(sonst ST src, const ST dst, const T t_beg, const T t_end
+    int profile(const ST src, const ST dst, const T t_beg, const T t_end,
                 const bool use_hubs = true,
                 const bool use_transfers = false,
                 const T min_chg_time = 60,
-                const int ntr_max = ntrips_max // FIXME : works only when the number of trips remains <= ntr_max
+                const int ntr_max = ntrips_max, // FIXME : not implemented
+                const bool do_pre_scan = false
                 ) {
 
+        assert(0 <= t_beg && t_beg <= t_end && t_end <= 3600*24);
         assert(ntr_max <= ntrips_max);
         assert(min_chg_time > 0); // 0 is problematic with 0 delay connections
-
-        // initialize
-        for (int i = 0; i < ttbl.n_h; ++i) { st_eat[i] = ttbl.t_max; }
-        for (int i = 0; i < ttbl.n_h; ++i) { all_pareto[i].clear(); }
-        for (int i = 0; i < ttbl.n_h; ++i) { n_trips[i] = ntrips_max + 1000; }
-        for (int i = 0; i < ttbl.n_h; ++i) { eat_trip[i] = not_trip_index; }
-        for (int tr = 0; tr < n_tr; ++tr) { trip_eat[tr] = ttbl.t_max; }
-        for (int tr = 0; tr < n_tr; ++tr) { trip_ntrips[tr] = n_tr; }
-        pset src_prof;
         
-        st_eat[dst] = t_end;
-        S s_dst = ttbl.station_stops[dst][0];
-        n_trips[dst] = 0;
-        for (int k = 0; k <= ntr_max; ++k) {
-            parent[k][dst] = s_dst;
+        // Regular scan to find reachable trips (30-40ms, HL: 100-300ms):
+        if (do_pre_scan) {
+            earliest_arrival_time(src, dst, t_beg, use_hubs, use_transfers,
+                                  min_chg_time, ntr_max, t_end);
         }
         
-        auto update_eat = [this](ST st, T t, S par, ST by_st, int k,
-                                 int by_trip = not_trip_index) {
-            if (t < st_eat[st]) {
-                st_eat[st] = t;
-                eat_trip[st] = by_trip;
-                n_trips[st] = k;
-                parent[k][st] = par;
+        // Initialize, but preserve: trip_board
+        
+        for (int i = 0; i < ttbl.n_h; ++i) { wlk_dst[i] = ttbl.t_max; }
+        //for (int i = 0; i < ttbl.n_h; ++i) { st_eat[i] = ttbl.t_max; }
+        for (int i = 0; i < ttbl.n_h; ++i) { all_pareto[i].clear(); }
+        //for (int i = 0; i < ttbl.n_h; ++i) { n_trips[i] = ntrips_max + 1000; }
+        //for (int i = 0; i < ttbl.n_h; ++i) { eat_trip[i] = not_trip_index; }
+        for (int tr = 0; tr < n_tr; ++tr) { trip_eat[tr] = ttbl.t_max; }
+        //for (int tr = 0; tr < n_tr; ++tr) { trip_ntrips[tr] = n_tr; }
+        
+        if (use_transfers) {
+            for (auto e : rev_transfers[dst]) {
+                wlk_dst[e.dst] = e.wgt;
             }
-        };
+        }
 
-        
-        
+        if (use_hubs) { // need walking time from src anyway
+            for (auto e : rev_inhubs[dst]) {
+                wlk_dst[e.dst] = e.wgt;
+            }
+            for (int st = 0; st < ttbl.n_st; ++st) {
+                if (use_hubs || st == src) {
+                    T t_st = wlk_dst[st];
+                    for (auto e : ttbl.outhubs[st]) {
+                        if (e.wgt >= t_st) break; // pruning
+                        T t = e.wgt + wlk_dst[e.dst];
+                        if (t < t_st) t_st = t;
+                    }
+                    wlk_dst[st] = t_st;
+                }
+            }
+        }
+
         assert(t_end < conn_at_last.size());
         assert(conn[conn_at_last[t_end]].arr <= t_end);
         assert(conn_at_last[t_end] == conn.size() - 1
-               || conn[onn_at_last[t_end] + 1] > t_end);
+               || conn[conn_at_last[t_end] + 1].arr > t_end);
+
+        int n_conn = 0, n_conn_skipped = 0;
+        
         for (int i = conn_at_last[t_end]; i != -1; --i) {
             const connection &c = conn[i];
+            ++n_conn;
+            if (do_pre_scan && trip_board[c.trip] == not_stop_index) {
+                // trip is not reachable, a lot for Switzerland
+                ++n_conn_skipped;
+                continue;
+            }
             if (c.dep < t_beg) break;
+            
             ST st_from = ttbl.stop_station[c.from];
-            ST st_to = ttbl.stop_station[c.to];                
+            ST st_to = ttbl.stop_station[c.to];
 
-            T walking = st_eat[st_from];
+            // Estimate arrival time from c:
+            T c_eat = ttbl.t_max;
+
+            T t_walk = c.arr + wlk_dst[st_to];
+            if (t_walk < c_eat) c_eat = t_walk;
+            
+            T t_trip = trip_eat[c.trip];
+            if (t_trip < c_eat) c_eat = t_trip;
+            
+            // t_ransfer:
             if (use_transfers) {
-                for (auto transf : transfers[st_from]) {
-                    update_eat(transf.dst, c.arr + transf.wgt,
-                               c.to,
-                               st_to,
-                               trip_ntrips[c.trip]);
+                for(auto e : transfers[st_to]) {
+                    T t = all_pareto[e.dst].smallest_x_bellow(ttbl.t_max,
+                                              - (c.arr + e.wgt + min_chg_time));
+                    if (t < c_eat) c_eat = t;
                 }
             }
             if (use_hubs) {
-                for (auto e : ttbl.outhubs[st_to]) {
-                    ST h = e.dst;
-                    if (st_eat[st_to] + e.wgt >= st_eat[dst])
-                        break; // target pruning
-                    update_eat(h, st_eat[st_to] + e.wgt,
-                               c.to,
-                               st_to,
-                               trip_ntrips[c.trip]);
+                for(auto e : ttbl.outhubs[st_to]) {
+                    T t = all_pareto[e.dst].smallest_x_bellow(ttbl.t_max,
+                                              - (c.arr + e.wgt + min_chg_time));
+                    if (t < c_eat) c_eat = t;
                 }
+                
             }
-            
+
+            // Update eat:
+            if (c_eat < trip_eat[c.trip]) trip_eat[c.trip] = c_eat;
+            if ( ! all_pareto[src].dominates(c_eat, - c.dep)) {// source dominat
+                bool seen =false;
+                if (use_transfers) {
+                    for(auto e : rev_transfers[st_from]) {
+                        T last_dep = c.dep - e.wgt;
+                        if (c_eat < t_end && last_dep >= t_beg)
+                            all_pareto[e.dst].add(c_eat, - last_dep);
+                        if (e.dst == st_from) seen = true;
+                    }
+                }
+                if (use_hubs) {
+                    for(auto e : rev_inhubs[st_from]) {
+                        T last_dep = c.dep - e.wgt;
+                        if (c_eat < t_end && last_dep >= t_beg)
+                            all_pareto[e.dst].add(c_eat, - last_dep);
+                        if (e.dst == st_from) seen = true;
+                    }
+                }
+                assert(seen);
+            }
         }
+
+        int n_tr = all_pareto[src].size();
+        bool walk_faster = false;
+        for (auto p : all_pareto[src].pts) {
+            T arr = p.x, dep = - p.y;
+            if (arr - dep >= wlk_dst[src]) {
+                if ( ! walk_faster) std::cout <<"walk("<< wlk_dst[src] <<") ";
+                walk_faster = true;
+            } else {
+                walk_faster = false;
+                std::cout << dep <<","<< arr <<" ";
+            }
+            if (p.x - 1 - wlk_dst[src] >= t_beg)
+                all_pareto[src].add(p.x - 1, - (p.x - 1 - wlk_dst[src]));
+        }
+        int n_tr_walk = all_pareto[src].size();
         
+        //all_pareto[src].print();
+        //all_pareto[dst].print();
+
+        //std::cerr <<"skipped conns: "<<n_conn_skipped <<" / "<< n_conn <<"\n";
+
+        std::cout <<"\n"<< n_tr <<" "<< n_tr_walk <<"   ";
+        return n_tr_walk;
     }
 
     T test(int n_q, T t_beg, T t_end) {
