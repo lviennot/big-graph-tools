@@ -9,7 +9,7 @@
 #include "timetable.hh"
 #include "mgraph.hh"
 #include "traversal.hh"
-#include "pareto.hh"
+#include "pareto_rev.hh"
 
 
 class connection_scan {
@@ -21,7 +21,7 @@ private:
     typedef timetable::R R;
     typedef timetable::T T;
     
-    typedef pareto<T> pset;
+    typedef pareto_rev<T> pset;
     typedef pset::point point;  // x = est.arr.time, y = - last.dep.time
     std::vector<pset> all_pareto;
 
@@ -174,6 +174,12 @@ public:
 
         rev_inhubs = tt.inhubs.reverse(); // not sorted by weight
         rev_transfers = transfers.reverse();
+
+        for (ST u : tt.transfers) {
+            for (auto e : tt.transfers[u]) {
+                assert(rev_transfers.edge_weight(e.dst, u) == e.wgt);
+            }
+        }
     }
 
     T earliest_arrival_time(const ST src, const ST dst, const T t_dep,
@@ -369,8 +375,9 @@ public:
     void print_journey(ST dst,
                        const bool use_hubs = true,
                        const bool use_transfers = false,
-                       const T min_chg_time = 60,
-                       std::ostream &cout = std::cout) {
+                       std::ostream &cout = std::cout,
+                       const T min_chg_time = 60
+                       ) {
         for (int i = 0; i < ttbl.n_h; ++i) { h_eat[i] = ttbl.t_max; }
         int k = n_trips[dst];
         assert(k <= ntrips_max);
@@ -436,22 +443,24 @@ public:
         cout <<"\n";
     }
 
-    int profile(const ST src, const ST dst, const T t_beg, const T t_end,
+    pareto_rev<T> profile(const ST src, const ST dst,
+                const T t_beg, const T t_end,
                 const bool use_hubs = true,
                 const bool use_transfers = false,
-                const T min_chg_time = 60,
+                const T min_chg_bef = 60, const T min_chg_aft = 0,
                 const int ntr_max = ntrips_max, // FIXME : not implemented
                 const bool do_pre_scan = false
                 ) {
 
         assert(0 <= t_beg && t_beg <= t_end && t_end <= 3600*24);
         assert(ntr_max <= ntrips_max);
-        assert(min_chg_time > 0); // 0 is problematic with 0 delay connections
+        assert(min_chg_bef > 0 || min_chg_aft > 0); // 0 is problematic with 0 delay connections
         
         // Regular scan to find reachable trips (30-40ms, HL: 100-300ms):
         if (do_pre_scan) {
+            assert(min_chg_aft == 0);
             earliest_arrival_time(src, dst, t_beg, use_hubs, use_transfers,
-                                  min_chg_time, ntr_max, t_end);
+                                  min_chg_bef, ntr_max, t_end);
         }
         
         // Initialize, but preserve: trip_board
@@ -475,15 +484,13 @@ public:
                 wlk_dst[e.dst] = e.wgt;
             }
             for (int st = 0; st < ttbl.n_st; ++st) {
-                if (use_hubs || st == src) {
-                    T t_st = wlk_dst[st];
-                    for (auto e : ttbl.outhubs[st]) {
-                        if (e.wgt >= t_st) break; // pruning
-                        T t = e.wgt + wlk_dst[e.dst];
-                        if (t < t_st) t_st = t;
-                    }
-                    wlk_dst[st] = t_st;
+                T t_st = wlk_dst[st];
+                for (auto e : ttbl.outhubs[st]) {
+                    if (e.wgt >= t_st) break; // pruning
+                    T t = e.wgt + wlk_dst[e.dst];
+                    if (t < t_st) t_st = t;
                 }
+                wlk_dst[st] = t_st;
             }
         }
 
@@ -520,14 +527,14 @@ public:
             if (use_transfers) {
                 for(auto e : transfers[st_to]) {
                     T t = all_pareto[e.dst].smallest_x_bellow(ttbl.t_max,
-                                              - (c.arr + e.wgt + min_chg_time));
+                                              - (c.arr + min_chg_aft + e.wgt));
                     if (t < c_eat) c_eat = t;
                 }
             }
             if (use_hubs) {
                 for(auto e : ttbl.outhubs[st_to]) {
                     T t = all_pareto[e.dst].smallest_x_bellow(ttbl.t_max,
-                                              - (c.arr + e.wgt + min_chg_time));
+                                              - (c.arr + min_chg_aft + e.wgt));
                     if (t < c_eat) c_eat = t;
                 }
                 
@@ -535,51 +542,65 @@ public:
 
             // Update eat:
             if (c_eat < trip_eat[c.trip]) trip_eat[c.trip] = c_eat;
-            if ( ! all_pareto[src].dominates(c_eat, - c.dep)) {// source dominat
-                bool seen =false;
+            if (true || ! all_pareto[src].dominates(c_eat, - c.dep - min_chg_bef)) {// source dominat
+                //bool seen =false;
                 if (use_transfers) {
                     for(auto e : rev_transfers[st_from]) {
-                        T last_dep = c.dep - e.wgt;
+                        T last_dep = c.dep - min_chg_bef - e.wgt;
                         if (c_eat < t_end && last_dep >= t_beg)
                             all_pareto[e.dst].add(c_eat, - last_dep);
-                        if (e.dst == st_from) seen = true;
+                        //if (e.dst == st_from) seen = true;
                     }
                 }
                 if (use_hubs) {
                     for(auto e : rev_inhubs[st_from]) {
-                        T last_dep = c.dep - e.wgt;
+                        T last_dep = c.dep - min_chg_bef - e.wgt;
                         if (c_eat < t_end && last_dep >= t_beg)
                             all_pareto[e.dst].add(c_eat, - last_dep);
-                        if (e.dst == st_from) seen = true;
+                        //if (e.dst == st_from) seen = true;
                     }
                 }
-                assert(seen);
+                //assert(seen);
             }
         }
 
-        int n_tr = all_pareto[src].size();
+        // Walk from src to trip:
+        if (use_hubs) {
+            pset &src_par = all_pareto[src];
+            for(auto e : ttbl.outhubs[src]) {
+                T wt = e.wgt;
+                for (auto p : all_pareto[e.dst].pts) { // decr order of last_dep
+                    T arr = p.x;
+                    T last_dep = (- p.y) - wt - min_chg_aft;
+                    if (last_dep < t_beg) break;
+                    src_par.add(arr, - last_dep);
+                }
+            }
+        }
+        
+        // Direct walk from src to dst:
+        pset src_pareto;
         bool walk_faster = false;
         for (auto p : all_pareto[src].pts) {
             T arr = p.x, dep = - p.y;
-            if (arr - dep >= wlk_dst[src]) {
-                if ( ! walk_faster) std::cout <<"walk("<< wlk_dst[src] <<") ";
+            if (arr - dep > wlk_dst[src]) {
+                if ( ! walk_faster) {
+                    src_pareto.add(arr, - (arr - wlk_dst[src]));
+                    //std::cout <<"walk("<< wlk_dst[src] <<") ";
+                }
                 walk_faster = true;
             } else {
+                src_pareto.add(arr, - dep);
+                //std::cout << dep <<","<< arr <<" ";
                 walk_faster = false;
-                std::cout << dep <<","<< arr <<" ";
             }
-            if (p.x - 1 - wlk_dst[src] >= t_beg)
-                all_pareto[src].add(p.x - 1, - (p.x - 1 - wlk_dst[src]));
         }
-        int n_tr_walk = all_pareto[src].size();
         
         //all_pareto[src].print();
         //all_pareto[dst].print();
 
-        //std::cerr <<"skipped conns: "<<n_conn_skipped <<" / "<< n_conn <<"\n";
-
-        std::cout <<"\n"<< n_tr <<" "<< n_tr_walk <<"   ";
-        return n_tr_walk;
+        std::cout <<"\n  without_dir="<< all_pareto[src].size() <<"    ";
+        return src_pareto;
     }
 
     T test(int n_q, T t_beg, T t_end) {

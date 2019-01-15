@@ -36,7 +36,7 @@ public:
     std::vector<point> pts;
     typename std::vector<point>::const_reverse_iterator last_bellow;
 
-    pareto_rev(size_t cap=48) { pts.reserve(cap); last_bellow = pts.rend(); }
+    pareto_rev(size_t cap=128) { pts.reserve(cap); last_bellow = pts.rend(); }
 
     pareto_rev(const pareto_rev &p) : pts(p.pts) {}
 

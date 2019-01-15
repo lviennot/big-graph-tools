@@ -65,6 +65,8 @@ int get_int_opt(int argc, char **argv,
     return std::stoi(get_opt(argc, argv, opt_prefix, std::to_string(dft)));
 }
 
+typedef pareto_rev<int> pset;
+
 int main (int argc, char **argv) {
     logging main_log("--");
 
@@ -159,7 +161,7 @@ int main (int argc, char **argv) {
             int dst = rand() % ttbl.n_st;
             int t = t_beg + rand() % (t_end - t_beg);
             int arr = csa.earliest_arrival_time(src, dst, t, false, true,
-                                                 chg, km);
+                                                 chg);
             if (arr <= t + max_delay) {
                 ++n_ok;
                 queries.push_back(std::make_tuple(src, dst, t));
@@ -172,16 +174,77 @@ int main (int argc, char **argv) {
     }
     // */
 
+
+    //* Print a journey
+    if (has_opt(argc, argv, "-journey")) {
+        int src = std::stoi(get_opt(argc, argv, "-src=", "4372"));
+        int dst = std::stoi(get_opt(argc, argv, "-dst=", "5948"));
+        int t = std::stoi(get_opt(argc, argv, "-t=", "32401"));
+        bool hubs = has_opt(argc, argv, "-hubs");
+
+        int arr = rpt.earliest_arrival_time(src, dst, t, hubs, ! hubs, chg);
+        std::cout <<" -------- "<< (hubs ? "HL" : "") <<"Raptor "
+                  << src << "=" << ttbl.station_id[src] 
+                  <<" to "<< dst <<"="<< ttbl.station_id[dst]
+                  <<" at "<< t <<" : EAT="<< arr
+                  <<" ("<< rpt.nb_trips_to(dst) <<")"
+                  <<"\n";
+        rpt.print_journey(dst, std::cout, chg);
+
+        int dep = rev_rpt.earliest_arrival_time(dst, src, -arr,
+                                                hubs, ! hubs, 0, chg);
+        std::cout <<" -------- "<< (hubs ? "HL" : "") <<"RaptorREV "
+                  << dst << "=" << ttbl.station_id[dst] 
+                  <<" to "<< src <<"="<< ttbl.station_id[src]
+                  <<" at "<< arr <<" : EAT="<< - dep <<"\n";
+        rev_rpt.print_journey(src, std::cout, 0, chg);
+        
+        arr = csa.earliest_arrival_time(src, dst, t, hubs, ! hubs, chg);
+        std::cout <<" -------- "<< (hubs ? "HL" : "") <<"CSA "
+                  << src << "=" << ttbl.station_id[src] 
+                  <<" to "<< dst <<"="<< ttbl.station_id[dst]
+                  <<" at "<< t <<" : EAT="<< arr <<"\n";
+        csa.print_journey(dst, hubs, ! hubs, std::cout, chg);
+    }
+
+    //* Arrival times
+    if (has_opt(argc, argv, "-arrival-times")) {
+        std::cout <<"src,dst,tdep,eat,eat_Unrestricted_Walking,eat_Walk_Only\n";
+        n_ok = 0;
+        for (auto q : queries) {
+            int src = std::get<0>(q);
+            int dst = std::get<1>(q);
+            int t = std::get<2>(q);
+            int arr1 = rpt.earliest_arrival_time(src, dst, t, false, true, chg);
+            int arr2 = csa.earliest_arrival_time(src, dst, t, false, true, chg);
+            // assert(arr1 == arr2); // can fail if chg == 0
+            int arrHL1 = rpt.earliest_arrival_time(src, dst, t, hub, trf, chg);
+            int arrHL2 = csa.earliest_arrival_time(src, dst, t, hub, trf, chg);
+            //assert(arrHL1 == arrHL2); // can fail if chg == 0
+            std::cout << ttbl.station_id[src] <<","<< ttbl.station_id[dst]
+                      <<","<< t <<","<< arr1 <<","<< arrHL1
+                      <<","<< (t + rpt.walking_time(src, dst)) <<"\n";
+            std::cout.flush();
+            ++n_ok;
+        }
+        main_log.cerr(t) << n_ok << " arrival times\n";
+        t = main_log.lap();
+    }
+    // */
+
+    
     // go profile CSA
     sum = 0, n_ok = 0;
     bool prescan = has_opt(argc, argv, "-csa-profile-prescan");
+    int t_get = std::stoi(get_opt(argc, argv, "-t-beg=", "0"));
     for (auto q : queries) {
         int src = std::get<0>(q);
         int dst = std::get<1>(q);
         std::cout << src <<"(="<< ttbl.station_id[src] <<") "
-                  << dst <<"(="<< ttbl.station_id[dst] <<") " <<" : \n";
-        int ntrips = csa.profile(src, dst, 0, 24*3600, false, true,
-                                 chg, km, prescan);
+                  << dst <<"(="<< ttbl.station_id[dst] <<") " <<" : ";
+        pset prof = csa.profile(src, dst, 0, 24*3600, false, true,
+                                 chg, 0, km, prescan);
+        int ntrips = prof.size();
         std::cout << ntrips <<"\n";
         sum += ntrips;
         ++n_ok;
@@ -198,9 +261,10 @@ int main (int argc, char **argv) {
     for (auto q : queries) {
         int src = std::get<0>(q);
         int dst = std::get<1>(q);
-        std::cout << src <<" "<< dst <<" : \n";
-        int ntrips = rpt.profile(rev_rpt, src, dst, 0, 24*3600,
-                                 false, true, km);
+        std::cout << src <<" "<< dst <<" : ";
+        pset prof = rpt.profile(rev_rpt, src, dst, 0, 24*3600,
+                                 false, true, chg);
+        int ntrips = prof.size();
         std::cout << ntrips <<"\n";
         sum += ntrips;
         ++n_ok;
@@ -220,9 +284,12 @@ int main (int argc, char **argv) {
         int src = std::get<0>(q);
         int dst = std::get<1>(q);
         std::cout << src <<" "<< dst <<" : ";
-        int ntrips = csa.profile(src, dst, 0, 24*3600, hub, trf,
-                                 chg, km, prescan);
+        pset prof = csa.profile(src, dst, 0, 24*3600, hub, trf,
+                                 chg, 0, km, prescan);
+        int ntrips = prof.size();
         std::cout << ntrips <<"\n";
+        if (src == std::stoi(get_opt(argc, argv, "-src=", "-1")))
+            prof.print();
         sum += ntrips;
         ++n_ok;
     }
@@ -239,9 +306,12 @@ int main (int argc, char **argv) {
         int src = std::get<0>(q);
         int dst = std::get<1>(q);
         std::cout << src <<" "<< dst <<" : ";
-        int ntrips = rpt.profile(rev_rpt, src, dst, 0, 24*3600,
-                                 hub, trf, km);
+        pset prof = rpt.profile(rev_rpt, src, dst, 0, 24*3600,
+                                 hub, trf, chg);
+        int ntrips = prof.size();
         std::cout << ntrips <<"\n";
+        if (src == std::stoi(get_opt(argc, argv, "-src=", "-1")))
+            prof.print();
         sum += ntrips;
         ++n_ok;
     }
@@ -252,41 +322,10 @@ int main (int argc, char **argv) {
     // */    
 
 
-    if (has_opt(argc, argv, "-exit-pr-hl")) exit(0);
-    
-    
-    //* Arrival times
-    if (has_opt(argc, argv, "-arrival-times")) {
-        std::cout <<"src,dst,tdep,eat,eat_Unrestricted_Walking,eat_Walk_Only\n";
-        n_ok = 0;
-        for (auto q : queries) {
-            int src = std::get<0>(q);
-            int dst = std::get<1>(q);
-            int t = std::get<2>(q);
-            int arr1 = rpt.earliest_arrival_time(src, dst, t, false, true,
-                                                 chg, km);
-            int arr2 = csa.earliest_arrival_time(src, dst, t, false, true,
-                                                 chg, km);
-            // assert(arr1 == arr2); // can fail if chg == 0
-            int arrHL1 = rpt.earliest_arrival_time(src, dst, t, hub, trf,
-                                                   chg, km);
-            int arrHL2 = csa.earliest_arrival_time(src, dst, t, hub, trf,
-                                                   chg, km);
-            //assert(arrHL1 == arrHL2); // can fail if chg == 0
-            std::cout << ttbl.station_id[src] <<","<< ttbl.station_id[dst]
-                      <<","<< t <<","<< arr1 <<","<< arrHL1
-                      <<","<< (t + rpt.walking_time(src, dst)) <<"\n";
-            std::cout.flush();
-            ++n_ok;
-        }
-        main_log.cerr(t) << n_ok << " arrival times\n";
-        t = main_log.lap();
-    }
-    // */
-
     
     if (has_opt(argc, argv, "-exit")) exit(0);
     
+        
     
     // go Raptor restricted walk
     sum = 0, n_ok = 0;
@@ -294,7 +333,7 @@ int main (int argc, char **argv) {
         int src = std::get<0>(q);
         int dst = std::get<1>(q);
         int t = std::get<2>(q);
-        int arr = rpt.earliest_arrival_time(src, dst, t, false, true, chg, km);
+        int arr = rpt.earliest_arrival_time(src, dst, t, false, true, chg);
         //std::cout << arr <<"\n";
         //assert(arr < ttbl.t_max);
         if (arr < ttbl.t_max) {
@@ -314,7 +353,7 @@ int main (int argc, char **argv) {
         int src = std::get<0>(q);
         int dst = std::get<1>(q);
         int t = std::get<2>(q);
-        int arr = rpt.earliest_arrival_time(src, dst, t, hub, trf, chg, km);
+        int arr = rpt.earliest_arrival_time(src, dst, t, hub, trf, chg);
         //if (arr < ttbl.t_max) rpt.print_journey(dst);
         //std::cout << src <<","<< dst <<","<< t <<" : "<< (arr - dep) <<"\n";
         //std::cout << arr <<"\n";
@@ -335,7 +374,7 @@ int main (int argc, char **argv) {
         int src = std::get<0>(q);
         int dst = std::get<1>(q);
         int t = std::get<2>(q);
-        int arr = csa.earliest_arrival_time(src, dst, t, false, true, chg, km);
+        int arr = csa.earliest_arrival_time(src, dst, t, false, true, chg);
         //std::cout << arr <<"\n";
         //assert(arr < ttbl.t_max);
         if (arr < ttbl.t_max) {
@@ -355,7 +394,7 @@ int main (int argc, char **argv) {
         int src = std::get<0>(q);
         int dst = std::get<1>(q);
         int t = std::get<2>(q);
-        int arr = csa.earliest_arrival_time(src, dst, t, hub, trf, chg, km);
+        int arr = csa.earliest_arrival_time(src, dst, t, hub, trf, chg);
         //assert(arr < ttbl.t_max);
         if (arr < ttbl.t_max) {
             sum += arr - t;
@@ -374,9 +413,9 @@ int main (int argc, char **argv) {
         int src = std::get<0>(q);
         int dst = std::get<1>(q);
         int t = std::get<2>(q);
-        int arr = rpt.earliest_arrival_time(src, dst, t, false, true, 0, km);
-        int dep = - rev_rpt.earliest_arrival_time(dst, src, - arr, false, true, 0, km);
-        int arr2 = rpt.earliest_arrival_time(src, dst, dep, false, true, 0, km);
+        int arr = rpt.earliest_arrival_time(src, dst, t, false, true, 0);
+        int dep = - rev_rpt.earliest_arrival_time(dst, src, - arr, false, true, 0);
+        int arr2 = rpt.earliest_arrival_time(src, dst, dep, false, true, 0);
         //std::cout << t <<" "<< dep <<" "<< arr <<" "<< arr2 <<"\n";
         //assert(arr < ttbl.t_max);
         if (arr < ttbl.t_max) {
@@ -397,7 +436,7 @@ int main (int argc, char **argv) {
         int src = std::get<0>(q);
         int dst = std::get<1>(q);
         int t = std::get<2>(q);
-        int npath = rpt.earliest_walk_pareto(src, dst, t, false, true, chg, km);
+        int npath = rpt.earliest_walk_pareto(src, dst, t, false, true, chg);
         if (npath > 0) {
             sum += npath;
             ++n_ok;
@@ -415,8 +454,8 @@ int main (int argc, char **argv) {
         int src = std::get<0>(q);
         int dst = std::get<1>(q);
         int t = std::get<2>(q);
-        //int arr = rpt.earliest_arrival_time(src, dst, t, hub, trf, chg, km);
-        int npath = rpt.earliest_walk_pareto(src, dst, t, hub, trf, chg, km);
+        //int arr = rpt.earliest_arrival_time(src, dst, t, hub, trf, chg);
+        int npath = rpt.earliest_walk_pareto(src, dst, t, hub, trf, chg);
         if (npath > 0) {
             sum += npath;
             ++n_ok;
