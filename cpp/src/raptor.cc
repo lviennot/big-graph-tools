@@ -229,6 +229,7 @@ int main (int argc, char **argv) {
         }
         main_log.cerr(t) << n_ok << " arrival times\n";
         t = main_log.lap();
+        exit(0);
     }
     // */
 
