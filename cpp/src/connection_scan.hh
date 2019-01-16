@@ -542,7 +542,7 @@ public:
 
             // Update eat:
             if (c_eat < trip_eat[c.trip]) trip_eat[c.trip] = c_eat;
-            if (true || ! all_pareto[src].dominates(c_eat, - c.dep - min_chg_bef)) {// source dominat
+            if ( ! all_pareto[src].dominates(c_eat, - c.dep - min_chg_bef)) {// source dominat
                 //bool seen =false;
                 if (use_transfers) {
                     for(auto e : rev_transfers[st_from]) {
@@ -581,11 +581,12 @@ public:
         // Direct walk from src to dst:
         pset src_pareto;
         bool walk_faster = false;
+        int n_walk = 0;
         for (auto p : all_pareto[src].pts) {
             T arr = p.x, dep = - p.y;
             if (arr - dep > wlk_dst[src]) {
                 if ( ! walk_faster) {
-                    src_pareto.add(arr, - (arr - wlk_dst[src]));
+                    ++n_walk;
                     //std::cout <<"walk("<< wlk_dst[src] <<") ";
                 }
                 walk_faster = true;
@@ -599,7 +600,8 @@ public:
         //all_pareto[src].print();
         //all_pareto[dst].print();
 
-        std::cout <<"\n  without_dir="<< all_pareto[src].size() <<"    ";
+        std::cout <<"   without_dir="<< all_pareto[src].size()
+                  <<" nwalk="<< n_walk <<"    ";
         return src_pareto;
     }
 
