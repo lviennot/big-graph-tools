@@ -380,15 +380,19 @@ public:
                        ) {
         for (int i = 0; i < ttbl.n_h; ++i) { h_eat[i] = ttbl.t_max; }
         int k = n_trips[dst];
+        cout <<" to "<< dst <<"="<< ttbl.station_id[dst]
+             <<" : EAT="<< st_eat[dst]
+             <<" ("<< k <<" trips)"
+             <<" :\n";
         assert(k <= ntrips_max);
         S par = parent[k][dst];
         T t = st_eat[dst];
         //cout << dst <<" at "<< t <<" :\n";
         while (dst != ttbl.stop_station[par]) {
             ST st_par = ttbl.stop_station[par];
-            T t_par = 0;
-            bool walk = false;
+            T t_par = - ttbl.t_max;
             // try walk:
+            bool walk = false;
             if (use_transfers) {
                 for (auto f : transfers[dst]) {
                     if (f.dst == st_par && t - f.wgt > t_par) {
@@ -409,25 +413,30 @@ public:
                 for (auto f : rev_inhubs[dst]) { h_eat[f.dst] = ttbl.t_max; }
             }
             // try trip:
+            bool trip = false;
             R r = ttbl.stop_route[par].first;
             int x_par = ttbl.stop_route[par].second;
             int y = -1;
-            for (S s : ttbl.station_stops[dst]) {
-                if (ttbl.stop_route[s].first == r
-                    && ttbl.stop_route[s].second >= x_par) {
-                    // find last trip arriving at t:
-                    while (y+1 < ttbl.stop_arrivals[s].size()
-                           && ttbl.stop_arrivals[s][y+1] <= t) {
-                        ++y;
-                    }
-                    // arrival time at parent:
-                    if (y >= 0
-                        && ttbl.stop_departures[par][y] - min_chg_time > t_par){
-                        walk = false;
-                        t_par = ttbl.stop_departures[par][y] - min_chg_time;
+            if (k > 0) {
+                for (S s : ttbl.station_stops[dst]) {
+                    if (ttbl.stop_route[s].first == r
+                        && ttbl.stop_route[s].second >= x_par) {
+                        // find last trip arriving at t:
+                        while (y+1 < ttbl.stop_arrivals[s].size()
+                               && ttbl.stop_arrivals[s][y+1] <= t) {
+                            ++y;
+                        }
+                        // arrival time at parent:
+                        if (y >= 0
+                   && ttbl.stop_departures[par][y] - min_chg_time > t_par){
+                            trip = true;
+                            walk = false;
+                            t_par = ttbl.stop_departures[par][y] - min_chg_time;
+                        }
                     }
                 }
             }
+            assert(trip || walk);
             cout << (walk ? "walk " : "trip ") << k;
             if ( ! walk) cout << "="<<  r <<"["<< y <<"]";
             cout <<" from "<< st_par <<"="<< ttbl.hub_id[st_par]
@@ -600,7 +609,7 @@ public:
         //all_pareto[src].print();
         //all_pareto[dst].print();
 
-        std::cout <<"   without_dir="<< all_pareto[src].size()
+        std::cout <<"   with_trips="<< all_pareto[src].size()
                   <<" nwalk="<< n_walk <<"    ";
         return src_pareto;
     }

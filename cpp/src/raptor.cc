@@ -132,7 +132,9 @@ int main (int argc, char **argv) {
         auto rows = read_csv
             (dir + get_opt(argc, argv, "-query-file=", "queries.csv"),
              3, "source", "target", "time");
+        int n_q_max = std::stoi(get_opt(argc, argv, "-nq=", "10000"));
         for (auto r : rows) {
+            if (n_q >= n_q_max) break;
             if (has_opt(argc, argv, "-1") && n_q >= 1) break;
             if (has_opt(argc, argv, "-10") && n_q >= 10) break;
             if (has_opt(argc, argv, "-100") && n_q >= 100) break;
@@ -177,33 +179,35 @@ int main (int argc, char **argv) {
 
     //* Print a journey
     if (has_opt(argc, argv, "-journey")) {
-        int src = std::stoi(get_opt(argc, argv, "-src=", "4372"));
-        int dst = std::stoi(get_opt(argc, argv, "-dst=", "5948"));
-        int t = std::stoi(get_opt(argc, argv, "-t=", "32401"));
+        int src = std::stoi(get_opt(argc, argv, "-src=", "-1"));
+        if (src == -1)
+            src = ttbl.id_to_station[get_opt(argc, argv, "-src-id=", "")];
+        int dst = std::stoi(get_opt(argc, argv, "-dst=", "-1"));
+        if (dst == -1)
+            dst = ttbl.id_to_station[get_opt(argc, argv, "-dst-id=", "")];
+        int t = std::stoi(get_opt(argc, argv, "-t=", "0"));
         bool hubs = has_opt(argc, argv, "-hubs");
 
         int arr = rpt.earliest_arrival_time(src, dst, t, hubs, ! hubs, chg);
-        std::cout <<" -------- "<< (hubs ? "HL" : "") <<"Raptor "
-                  << src << "=" << ttbl.station_id[src] 
-                  <<" to "<< dst <<"="<< ttbl.station_id[dst]
-                  <<" at "<< t <<" : EAT="<< arr
-                  <<" ("<< rpt.nb_trips_to(dst) <<")"
-                  <<"\n";
+        std::cout <<" -------- "<< (hubs ? "HL_" : "") <<"Raptor "
+                  <<"from "<< src << "=" << ttbl.station_id[src] <<" at "<< t;
         rpt.print_journey(dst, std::cout, chg);
 
-        int dep = rev_rpt.earliest_arrival_time(dst, src, -arr,
-                                                hubs, ! hubs, 0, chg);
-        std::cout <<" -------- "<< (hubs ? "HL" : "") <<"RaptorREV "
-                  << dst << "=" << ttbl.station_id[dst] 
-                  <<" to "<< src <<"="<< ttbl.station_id[src]
-                  <<" at "<< arr <<" : EAT="<< - dep <<"\n";
+        arr = rpt.earliest_arrival_time(src, dst, t, hubs, ! hubs,
+                                        chg, 0, km, true);
+        std::cout <<" -------- "<< (hubs ? "HL_" : "") <<"Raptor_trips "
+                  <<"from "<< src << "=" << ttbl.station_id[src] <<" at "<< t;
+        rpt.print_journey(dst, std::cout, chg);
+
+        int dep = - rev_rpt.earliest_arrival_time(dst, src, - arr,
+                                                hubs, ! hubs, 0, chg, km, true);
+        std::cout <<" -------- "<< (hubs ? "HL_" : "") <<"RaptorREV_trips "
+                  <<"from "<< dst << "=" << ttbl.station_id[dst] <<" at "<< t;
         rev_rpt.print_journey(src, std::cout, 0, chg);
         
         arr = csa.earliest_arrival_time(src, dst, t, hubs, ! hubs, chg);
-        std::cout <<" -------- "<< (hubs ? "HL" : "") <<"CSA "
-                  << src << "=" << ttbl.station_id[src] 
-                  <<" to "<< dst <<"="<< ttbl.station_id[dst]
-                  <<" at "<< t <<" : EAT="<< arr <<"\n";
+        std::cout <<" -------- "<< (hubs ? "HL_" : "") <<"CSA "
+                  <<"from "<< src << "=" << ttbl.station_id[src] <<" at "<< t;
         csa.print_journey(dst, hubs, ! hubs, std::cout, chg);
     }
 
@@ -289,7 +293,8 @@ int main (int argc, char **argv) {
                                  chg, 0, km, prescan);
         int ntrips = prof.size();
         std::cout << ntrips <<"\n";
-        if (src == std::stoi(get_opt(argc, argv, "-src=", "-1")))
+        if (src == std::stoi(get_opt(argc, argv, "-src=", "-1"))
+            && dst == std::stoi(get_opt(argc, argv, "-dst=", "-1")))
             prof.print();
         sum += ntrips;
         ++n_ok;
@@ -310,8 +315,9 @@ int main (int argc, char **argv) {
         pset prof = rpt.profile(rev_rpt, src, dst, 0, 24*3600,
                                  hub, trf, chg);
         int ntrips = prof.size();
-        std::cout << ntrips <<"\n";
-        if (src == std::stoi(get_opt(argc, argv, "-src=", "-1")))
+        std::cout << ntrips <<"\n"; std::cout.flush();
+        if (src == std::stoi(get_opt(argc, argv, "-src=", "-1"))
+            && dst == std::stoi(get_opt(argc, argv, "-dst=", "-1")))
             prof.print();
         sum += ntrips;
         ++n_ok;
