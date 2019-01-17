@@ -360,22 +360,17 @@ public:
                 const std::vector<std::vector<std::pair<T,T> > > &trips
                     = ttbl.trips_of[r];
                 const std::vector<S> &stops = ttbl.route_stops[r];
-                int x = route_has_improved_from[r];
+                int x_beg = route_has_improved_from[r];
                 int x_end = stops.size();
-                assert(x >= 0);
-                assert(x < x_end);
+                assert(x_beg >= 0);
+                assert(x_beg < x_end);
                 int x_last = route_has_improved_to[r];
                 assert(x_last >= 0 && x_last < x_end);
                 int y_end = trips.size();
-                // first trip at x:
-                S par = stops[x];
-                T par_eat = parent[k-1][ttbl.stop_station[par]].eat;
-                auto lower = std::lower_bound(ttbl.stop_departures[par].begin(),
-                                              ttbl.stop_departures[par].end(),
-                                              par_eat + min_chg_bef);
-                int y = std::distance(ttbl.stop_departures[par].begin(), lower);
-                for ( ++x; x < x_end; ++x) {
-                    //std::cerr <<" x="<< x <<" xend="<< x_end <<"\n";
+                S par = not_stop_index;
+                T par_eat = ttbl.t_max;
+                for (int x = x_beg, y = y_end; x < x_end; ++x) {
+                   //std::cerr <<" x="<< x <<" xend="<< x_end <<"\n";
                     S u = stops[x];
                     //std::cerr << "  u="<< u <<" n_s="<< ttbl.n_s
                     //          <<" "<< ttbl.stop_station.size() <<"\n";
@@ -389,22 +384,22 @@ public:
                         // if (stop_has_improved[u])
                         // just improved again, ignore previous improve
                     } else {
-                        // OK when min_chg_time=0 :
-                        //if (arr >= eat && x > x_last && k > 1) break;
+                        T eat_when_improved = parent[k-1][st].eat;
+                        int y_prev = y;
                         if (stop_has_improved[u]) {
-                            //RM || st == src) {// if at_least_one_trip=true
-                            /* dichotomic search does not seem to help 
-                            if (y == y_end) {
-                                auto lower = std::lower_bound(ttbl.stop_departures[u].begin(), ttbl.stop_departures[u].end(), eat-when_improved + min_chg_bef);
-                                y = std::distance(ttbl.stop_departures[u].begin(), lower);
-                            }
-                            */
-                            T eat_when_improved = parent[k-1][st].eat;
-                            int y_prev = y;
-                            while (y-1 >= 0
-                                   && ttbl.stop_departures[u][y-1]
-                                   >= eat_when_improved + min_chg_bef) {
-                                --y;
+                            if (y == y_end && x == x_beg) {// dicho for first
+                              auto lower =
+                               std::lower_bound(ttbl.stop_departures[u].begin(),
+                                              ttbl.stop_departures[u].end(),
+                                              eat_when_improved + min_chg_bef);
+                              y = std::distance(ttbl.stop_departures[u].begin(),
+                                                lower);
+                            } else {
+                                while (y-1 >= 0
+                                       && ttbl.stop_departures[u][y-1]
+                                       >= eat_when_improved + min_chg_bef) {
+                                    --y;
+                                }
                             }
                             if (y < y_prev) {//better if == and k == 1 
                                 par = u;
@@ -417,6 +412,11 @@ public:
                         else stop_prev_dep[u] = trips[y-1][x].second;
                     }
                     stop_has_improved[u] = false;
+                    // target pruning:
+                    if (x >= x_last && (y == y_end
+                         || trips[y][x].second + min_chg_aft >= st_eat[dst])){
+                        break;
+                    }
                 }
                 route_has_improved_from[r] = not_stop_index;
             }
