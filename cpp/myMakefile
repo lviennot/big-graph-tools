@@ -1,9 +1,11 @@
-HDRS:=$(wildcard src/*.hh)
-CTRS:=$(wildcard src/*.cc)
-LIBS:=-lz
+RSYNC:=rsync -v -e ssh --inplace -r --exclude '*~' --exclude '\#*' 
 
 
 # -------------------- compile ------------------------
+
+HDRS:=$(wildcard src/*.hh)
+CTRS:=$(wildcard src/*.cc)
+LIBS:=-lz
 
 main: raptor.o
 
@@ -141,17 +143,27 @@ alleatpar:
 		make $${dir}/$*; \
 	done
 
+%.raptor: raptor.o
+	echo $$HOSTNAME $$OAR_JOB_ID
+	make $*
+
 %.rioc3: _scp
 	for dir in London Paris Switzerland; do \
-		make $${dir}/$*.rioc RESA=yes; sleep 1;\
+		make $${dir}/$*.raptor.rioc RESA=yes; sleep 1;\
 	done
 
-%.eat: raptor.o
+riocCSA3: _scp
+	for dir in London Paris Switzerland; do \
+		make $${dir}.CSA.rioc RESA=yes; sleep 1;\
+	done
+
+%.eat:
 	$(eval DIR:=`dirname $*`)
 	$(eval QRY:=`basename $*`)
 	./raptor.o $(DIR) -query-file=$(QRY) -arrival-times > $@
 
 %.CSA:
+	echo $$HOSTNAME $$OAR_JOB_ID
 	$(eval HUNDR := grep -v -e '^[0-9]$$$$' -e '^[0-9][0-9]$$$$' -e '^[0-9][0-9][1-9]$$$$' -e '^[0-9][1-9][0-9]$$$$')
 	cd CSA/build ;\
 	for opt in '' '--hl' '--profile' '--hl --profile'; do \
@@ -184,7 +196,55 @@ alleatpar:
 	(echo "source,target,time"; tail -n +2 $^ | awk -F, '{if ($$4 - $$3 <= 14400) print $$1","$$2","$$3}' | head -n 1000) > $@
 
 
+# ------------------ result analysis -----------------------
+
+getres:
+	for dir in $(PT_DIRS) ; do \
+		$(RSYNC) "rioc.inria.fr:c/$$dir/*.eat" $$dir/ ; \
+	done
+
+%.delay_day: %
+	tail -n +2 $< | awk -F, '{if($$4 < 100000000 && $$3 >= 5 * 3600 && $$4 < 21 * 3600) print $$1, $$2, $$3, $$5, $$5, $$6, 100.*($$4-$$5)/($$4-$$3)}' | sort -n -k 7 > $@
+
+%.delay: %
+	tail -n +2 $< | awk -F, '{if($$4 < 100000000) print $$1, $$2, $$3, $$5, $$5, $$6, 100.*($$4-$$5)/($$5-$$3)}' | sort -n -k 7 > $@
+
+
+
+%.cat: %
+	cat $*
+
+%.wc: %
+	wc $*
+
+%.nlines: %
+	wc -l $* | sed -e 's/^ *//' | cut -d' ' -f1
+
+%.head: %
+	head $*
+
+%.tail: %
+	tail $*
+
+%.median: %
+	nlines=`make -s $*.nlines`; echo $$nlines lines; \
+	head -n $$(( $$nlines / 2 )) $* | tail
+
+%.min_moy_max: %
+	cat $* | grep -e '^#' | head -n 2 ;\
+	cat $* | grep -v -e '^#' | gawk 'BEGIN { cols=0; n=0; } { cols=NF; for (i=1; i<=NF; i++) { v=$$(i); sum[i]+=v; if (n == 0 || v > max[i]) max[i]=v; if (n == 0 || v < min[i]) min[i]=v; } n+=1; } END { for (i=1; i<=NF; i++) printf "%d\t",i; print ""; for (i=1; i<=NF; i++) printf "%.2f\t",min[i]; print "";  for (i=1; i<=NF; i++) printf "%.2f\t",sum[i]/n; print ""; for (i=1; i<=NF; i++) printf "%.2f\t",max[i]; print ""; print n; }'
+
+%.min_moy_max_int: %
+	cat $* | grep -e '^#' | head -n 2 ;\
+	cat $* | grep -v -e '^#' | gawk 'BEGIN { cols=0; n=0; } { cols=NF; for (i=1; i<=NF; i++) { v=$$(i); sum[i]+=v; if (n == 0 || v > max[i]) max[i]=v; if (n == 0 || v < min[i]) min[i]=v; } n+=1; } END { for (i=1; i<=NF; i++) printf "%d\t",i; print ""; for (i=1; i<=NF; i++) printf "%d\t",min[i]; print "";  for (i=1; i<=NF; i++) printf "%d\t",sum[i]/n; print ""; for (i=1; i<=NF; i++) printf "%d\t",max[i]; print ""; print n; }'
+
+%.avg:
+	make $*.min_moy_max_int
+
+
+
 # ------------- manage running ---------------
+
 
 %.force:
 	rm -f $*; make $*
@@ -201,23 +261,15 @@ stat:
 scp: _scp
 
 _scp: myMakefile Makefile $(HDRS) $(CTRS)
-	rsync -v -e ssh --inplace -r --exclude '*~' --exclude '#*' myMakefile Makefile src rioc.inria.fr:graph/cpp/
+	$(RSYNC) myMakefile Makefile src rioc.inria.fr:graph/cpp/
 	cp -f Makefile myMakefile
 	touch $@
 
 %.scp:
-	scp $* rioc.inria.fr:graph/cpp/$*
+	$(RSYNC) $* rioc.inria.fr:graph/cpp/
 
 
 # ------------------ test some macros -----------------------
-
-%.min_moy_max:
-	grep -v -e '^#' $* | tr " " "\t" | head -n 1 ;\
-	grep -v -e '^#' $* | tail -n +2 | awk -F, '{if($$4 < 100000000) print $$1, $$2, $$3, $$4-$$3, $$5-$$3, $$6-$$3, 100.*($$4-$$5)/($$5-$$3)}' | gawk 'BEGIN { cols=0; n=0; } { cols=NF; for (i=1; i<=NF; i++) { v=$$(i); sum[i]+=v; if (n == 0 || v > max[i]) max[i]=v; if (n == 0 || v < min[i]) min[i]=v; } n+=1; } END { for (i=1; i<=NF; i++) printf "%d\t",i; print ""; for (i=1; i<=NF; i++) printf "%d\t",min[i]; print "";  for (i=1; i<=NF; i++) printf "%d\t",sum[i]/n; print ""; for (i=1; i<=NF; i++) printf "%d\t",max[i]; print ""; print n; }'
-
-%.avg: 
-	make $*.min_moy_max
-
 
 t:
 	$(eval ALL:=$(if $(ALL),yes,no))

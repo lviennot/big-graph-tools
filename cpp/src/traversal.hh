@@ -122,7 +122,7 @@ public:
 
     std::vector<node> digraph_nodes() const { // node i cooresponds to visit_[i]
         std::vector<node> nds(nvis_);
-        for (int i = nvis_ - 1; i >= 0; --i) {
+        for (int i = nvis_ - 1; i != -1; --i) {
             V u = visit_[i];
             nds[i].vtx = u;
             int p = visited_at_[parent_[u]];

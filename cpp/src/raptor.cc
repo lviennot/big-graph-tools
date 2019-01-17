@@ -65,6 +65,8 @@ int get_int_opt(int argc, char **argv,
     return std::stoi(get_opt(argc, argv, opt_prefix, std::to_string(dft)));
 }
 
+typedef pareto_rev<int> pset;
+
 int main (int argc, char **argv) {
     logging main_log("--");
 
@@ -130,8 +132,12 @@ int main (int argc, char **argv) {
         auto rows = read_csv
             (dir + get_opt(argc, argv, "-query-file=", "queries.csv"),
              3, "source", "target", "time");
+        int n_q_max = std::stoi(get_opt(argc, argv, "-nq=", "10000"));
         for (auto r : rows) {
+            if (n_q >= n_q_max) break;
+            if (has_opt(argc, argv, "-1") && n_q >= 1) break;
             if (has_opt(argc, argv, "-10") && n_q >= 10) break;
+            if (has_opt(argc, argv, "-100") && n_q >= 100) break;
             int src = ttbl.id_to_station[r[0]];
             int dst = ttbl.id_to_station[r[1]];
             int t = std::stoi(r[2]);
@@ -157,7 +163,7 @@ int main (int argc, char **argv) {
             int dst = rand() % ttbl.n_st;
             int t = t_beg + rand() % (t_end - t_beg);
             int arr = csa.earliest_arrival_time(src, dst, t, false, true,
-                                                 chg, km);
+                                                 chg);
             if (arr <= t + max_delay) {
                 ++n_ok;
                 queries.push_back(std::make_tuple(src, dst, t));
@@ -171,6 +177,51 @@ int main (int argc, char **argv) {
     // */
 
 
+    //* Print a journey
+    if (has_opt(argc, argv, "-journey")) {
+        int src = std::stoi(get_opt(argc, argv, "-src=", "-1"));
+        if (src == -1)
+            src = ttbl.id_to_station[get_opt(argc, argv, "-src-id=", "")];
+        int dst = std::stoi(get_opt(argc, argv, "-dst=", "-1"));
+        if (dst == -1)
+            dst = ttbl.id_to_station[get_opt(argc, argv, "-dst-id=", "")];
+        int t = std::stoi(get_opt(argc, argv, "-t=", "0"));
+        bool hubs = has_opt(argc, argv, "-hubs");
+
+        int arr = rpt.earliest_arrival_time(src, dst, t, hubs, ! hubs, chg);
+        std::cout <<" -------- "<< (hubs ? "HL_" : "") <<"Raptor "
+                  <<"from "<< src << "=" << ttbl.station_id[src] <<" at "<< t;
+        rpt.print_journey(dst, std::cout, chg);
+
+        arr = rpt.earliest_arrival_time(src, dst, t, hubs, ! hubs,
+                                        chg, 0, km, true);
+        std::cout <<" -------- "<< (hubs ? "HL_" : "") <<"Raptor_trips "
+                  <<"from "<< src << "=" << ttbl.station_id[src] <<" at "<< t;
+        rpt.print_journey(dst, std::cout, chg);
+
+        int dep = - rev_rpt.earliest_arrival_time(dst, src, - arr,
+                                                hubs, ! hubs, 0, chg, km, true);
+        std::cout <<" -------- "<< (hubs ? "HL_" : "") <<"RaptorREV_trips "
+                  <<"from "<< dst << "=" << ttbl.station_id[dst] <<" at "<< t;
+        rev_rpt.print_journey(src, std::cout, 0, chg);
+        
+        arr = csa.earliest_arrival_time(src, dst, t, hubs, ! hubs, chg);
+        std::cout <<" -------- "<< (hubs ? "HL_" : "") <<"CSA "
+                  <<"from "<< src << "=" << ttbl.station_id[src] <<" at "<< t;
+        csa.print_journey(dst, hubs, ! hubs, std::cout, chg);
+
+        std::cout <<" walk time "<< rpt.walking_time(7229, 10016) <<"\n";
+        int r = 1616, y = 4;
+        for (int i = 0; i < ttbl.trips_of[r][y].size(); ++i) {
+            int s = ttbl.route_stops[r][i];
+            int st = ttbl.stop_station[s];
+            std::cout <<"     "<< st <<"="<< ttbl.hub_id[st]
+                      <<" (stop "<< s <<" idx="<< i <<") at "
+                      << ttbl.trips_of[r][y][i].first
+                      <<", dep. "<< ttbl.trips_of[r][y][i].second <<"\n";
+        }
+    }
+
     //* Arrival times
     if (has_opt(argc, argv, "-arrival-times")) {
         std::cout <<"src,dst,tdep,eat,eat_Unrestricted_Walking,eat_Walk_Only\n";
@@ -179,35 +230,120 @@ int main (int argc, char **argv) {
             int src = std::get<0>(q);
             int dst = std::get<1>(q);
             int t = std::get<2>(q);
-            if (has_opt(argc, argv, "-skip") && ttbl.station_id[src] != "4561")
-                continue;
-            src = ttbl.id_to_station[get_opt(argc, argv, "-src=",
-                                             ttbl.station_id[src])];
-            dst = ttbl.id_to_station[get_opt(argc, argv, "-dst=",
-                                         ttbl.station_id[dst])];
-            t = get_int_opt(argc, argv, "-t=", t);
-            int arr1 = rpt.earliest_arrival_time(src, dst, t, false, true,
-                                                 chg, km);
-            int arr2 = csa.earliest_arrival_time(src, dst, t, false, true,
-                                                 chg, km);
+            int arr1 = rpt.earliest_arrival_time(src, dst, t, false, true, chg);
+            int arr2 = csa.earliest_arrival_time(src, dst, t, false, true, chg);
             // assert(arr1 == arr2); // can fail if chg == 0
-            int arrHL1 = rpt.earliest_arrival_time(src, dst, t, hub, trf,
-                                                   chg, km);
-            int arrHL2 = csa.earliest_arrival_time(src, dst, t, hub, trf,
-                                                   chg, km);
+            int arrHL1 = rpt.earliest_arrival_time(src, dst, t, hub, trf, chg);
+            int arrHL2 = csa.earliest_arrival_time(src, dst, t, hub, trf, chg);
             //assert(arrHL1 == arrHL2); // can fail if chg == 0
             std::cout << ttbl.station_id[src] <<","<< ttbl.station_id[dst]
                       <<","<< t <<","<< arr1 <<","<< arrHL1
                       <<","<< (t + rpt.walking_time(src, dst)) <<"\n";
             std::cout.flush();
+            ++n_ok;
         }
-        ++n_ok;
         main_log.cerr(t) << n_ok << " arrival times\n";
         t = main_log.lap();
+        exit(0);
     }
     // */
+
+    
+    // go profile CSA
+    sum = 0, n_ok = 0;
+    bool prescan = has_opt(argc, argv, "-csa-profile-prescan");
+    int t_get = std::stoi(get_opt(argc, argv, "-t-beg=", "0"));
+    for (auto q : queries) {
+        int src = std::get<0>(q);
+        int dst = std::get<1>(q);
+        std::cout << src <<"(="<< ttbl.station_id[src] <<") "
+                  << dst <<"(="<< ttbl.station_id[dst] <<") " <<" : ";
+        pset prof = csa.profile(src, dst, 0, 24*3600, false, true,
+                                 chg, 0, km, prescan);
+        int ntrips = prof.size();
+        std::cout << ntrips <<"\n";
+        sum += ntrips;
+        ++n_ok;
+    }
+    main_log.cerr(t) << n_q << " Profile CSA queries done, avg_ntrips = "
+                     << (sum / n_ok)
+                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
+    t = main_log.lap();
+    // */    
+
+
+    // go profile Raptor
+    sum = 0, n_ok = 0;
+    for (auto q : queries) {
+        int src = std::get<0>(q);
+        int dst = std::get<1>(q);
+        std::cout << src <<" "<< dst <<" : ";
+        pset prof = rpt.profile(rev_rpt, src, dst, 0, 24*3600,
+                                 false, true, chg);
+        int ntrips = prof.size();
+        std::cout << ntrips <<"\n";
+        sum += ntrips;
+        ++n_ok;
+    }
+    main_log.cerr(t) << n_q << " Profile Raptor queries done, avg_ntrips = "
+                     << (sum / n_ok)
+                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
+    t = main_log.lap();
+
+
+    if (has_opt(argc, argv, "-exit-pr")) exit(0);
+
+    
+    // go profile HLCSA
+    sum = 0, n_ok = 0;
+    for (auto q : queries) {
+        int src = std::get<0>(q);
+        int dst = std::get<1>(q);
+        std::cout << src <<" "<< dst <<" : ";
+        pset prof = csa.profile(src, dst, 0, 24*3600, hub, trf,
+                                 chg, 0, km, prescan);
+        int ntrips = prof.size();
+        std::cout << ntrips <<"\n";
+        if (src == std::stoi(get_opt(argc, argv, "-src=", "-1"))
+            && dst == std::stoi(get_opt(argc, argv, "-dst=", "-1")))
+            prof.print();
+        sum += ntrips;
+        ++n_ok;
+    }
+    main_log.cerr(t) << n_q << " Profile HLCSA queries done, avg_ntrips = "
+                     << (sum / n_ok)
+                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
+    t = main_log.lap();
+    // */    
+
+    
+    // go profile HLRaptor
+    sum = 0, n_ok = 0;
+    for (auto q : queries) {
+        int src = std::get<0>(q);
+        int dst = std::get<1>(q);
+        std::cout << src <<" "<< dst <<" : ";
+        pset prof = rpt.profile(rev_rpt, src, dst, 0, 24*3600,
+                                 hub, trf, chg);
+        int ntrips = prof.size();
+        std::cout << ntrips <<"\n"; std::cout.flush();
+        if (src == std::stoi(get_opt(argc, argv, "-src=", "-1"))
+            && dst == std::stoi(get_opt(argc, argv, "-dst=", "-1")))
+            prof.print();
+        sum += ntrips;
+        ++n_ok;
+    }
+    main_log.cerr(t) << n_q << " Profile HLRaptor queries done, avg_ntrips = "
+                     << (sum / n_ok)
+                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
+    t = main_log.lap();
+    // */    
+
+
     
     if (has_opt(argc, argv, "-exit")) exit(0);
+    
+        
     
     // go Raptor restricted walk
     sum = 0, n_ok = 0;
@@ -215,7 +351,7 @@ int main (int argc, char **argv) {
         int src = std::get<0>(q);
         int dst = std::get<1>(q);
         int t = std::get<2>(q);
-        int arr = rpt.earliest_arrival_time(src, dst, t, false, true, chg, km);
+        int arr = rpt.earliest_arrival_time(src, dst, t, false, true, chg);
         //std::cout << arr <<"\n";
         //assert(arr < ttbl.t_max);
         if (arr < ttbl.t_max) {
@@ -235,7 +371,7 @@ int main (int argc, char **argv) {
         int src = std::get<0>(q);
         int dst = std::get<1>(q);
         int t = std::get<2>(q);
-        int arr = rpt.earliest_arrival_time(src, dst, t, hub, trf, chg, km);
+        int arr = rpt.earliest_arrival_time(src, dst, t, hub, trf, chg);
         //if (arr < ttbl.t_max) rpt.print_journey(dst);
         //std::cout << src <<","<< dst <<","<< t <<" : "<< (arr - dep) <<"\n";
         //std::cout << arr <<"\n";
@@ -256,7 +392,7 @@ int main (int argc, char **argv) {
         int src = std::get<0>(q);
         int dst = std::get<1>(q);
         int t = std::get<2>(q);
-        int arr = csa.earliest_arrival_time(src, dst, t, false, true, chg, km);
+        int arr = csa.earliest_arrival_time(src, dst, t, false, true, chg);
         //std::cout << arr <<"\n";
         //assert(arr < ttbl.t_max);
         if (arr < ttbl.t_max) {
@@ -276,7 +412,7 @@ int main (int argc, char **argv) {
         int src = std::get<0>(q);
         int dst = std::get<1>(q);
         int t = std::get<2>(q);
-        int arr = csa.earliest_arrival_time(src, dst, t, hub, trf, chg, km);
+        int arr = csa.earliest_arrival_time(src, dst, t, hub, trf, chg);
         //assert(arr < ttbl.t_max);
         if (arr < ttbl.t_max) {
             sum += arr - t;
@@ -295,9 +431,9 @@ int main (int argc, char **argv) {
         int src = std::get<0>(q);
         int dst = std::get<1>(q);
         int t = std::get<2>(q);
-        int arr = rpt.earliest_arrival_time(src, dst, t, false, true, 0, km);
-        int dep = - rev_rpt.earliest_arrival_time(dst, src, - arr, false, true, 0, km);
-        int arr2 = rpt.earliest_arrival_time(src, dst, dep, false, true, 0, km);
+        int arr = rpt.earliest_arrival_time(src, dst, t, false, true, 0);
+        int dep = - rev_rpt.earliest_arrival_time(dst, src, - arr, false, true, 0);
+        int arr2 = rpt.earliest_arrival_time(src, dst, dep, false, true, 0);
         //std::cout << t <<" "<< dep <<" "<< arr <<" "<< arr2 <<"\n";
         //assert(arr < ttbl.t_max);
         if (arr < ttbl.t_max) {
@@ -312,30 +448,13 @@ int main (int argc, char **argv) {
     t = main_log.lap();
 
 
-    // go profile Raptor
-    sum = 0, n_ok = 0;
-    for (auto q : queries) {
-        int src = std::get<0>(q);
-        int dst = std::get<1>(q);
-        int ntrips = rpt.profile(rev_rpt, src, dst, 0, 24*3600,
-                                 false, true, km);
-        //std::cout << ntrips <<"\n";
-        sum += ntrips;
-        ++n_ok;
-    }
-    main_log.cerr(t) << n_q << " Profile Raptor queries done, avg_ntrips = "
-                     << (sum / n_ok)
-                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
-    t = main_log.lap();
-
-
     //* go Pareto
     sum = 0, n_ok = 0;
     for (auto q : queries) {
         int src = std::get<0>(q);
         int dst = std::get<1>(q);
         int t = std::get<2>(q);
-        int npath = rpt.earliest_walk_pareto(src, dst, t, false, true, chg, km);
+        int npath = rpt.earliest_walk_pareto(src, dst, t, false, true, chg);
         if (npath > 0) {
             sum += npath;
             ++n_ok;
@@ -353,8 +472,8 @@ int main (int argc, char **argv) {
         int src = std::get<0>(q);
         int dst = std::get<1>(q);
         int t = std::get<2>(q);
-        //int arr = rpt.earliest_arrival_time(src, dst, t, hub, trf, chg, km);
-        int npath = rpt.earliest_walk_pareto(src, dst, t, hub, trf, chg, km);
+        //int arr = rpt.earliest_arrival_time(src, dst, t, hub, trf, chg);
+        int npath = rpt.earliest_walk_pareto(src, dst, t, hub, trf, chg);
         if (npath > 0) {
             sum += npath;
             ++n_ok;
@@ -366,24 +485,6 @@ int main (int argc, char **argv) {
     t = main_log.lap();
     // */
 
-
-    // go profile HLRaptor
-    sum = 0, n_ok = 0;
-    for (auto q : queries) {
-        int src = std::get<0>(q);
-        int dst = std::get<1>(q);
-        //std::cout << src <<" "<< dst <<" :\n";
-        int ntrips = rpt.profile(rev_rpt, src, dst, 0, 24*3600,
-                                 hub, trf, km);
-        //std::cout << ntrips <<"\n";
-        sum += ntrips;
-        ++n_ok;
-    }
-    main_log.cerr(t) << n_q << " Profile HLRaptor queries done, avg_ntrips = "
-                     << (sum / n_ok)
-                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
-    t = main_log.lap();
-    // */    
 
 
     // ------------------------ end -------------------------
