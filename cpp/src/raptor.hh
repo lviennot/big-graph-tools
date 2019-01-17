@@ -375,47 +375,50 @@ public:
                     //std::cerr << "  u="<< u <<" n_s="<< ttbl.n_s
                     //          <<" "<< ttbl.stop_station.size() <<"\n";
                     ST st = ttbl.stop_station[u];
-                    T eat = st_eat[st];
-                    T arr;
-                    if (y < y_end &&
-                        (arr = trips[y][x].first + min_chg_aft) < eat) {
-                        assert(par != not_stop_index);
-                        reach_station_trip(st, arr, arr - par_eat, r, par, k);
-                        // if (stop_has_improved[u])
-                        // just improved again, ignore previous improve
-                    } else {
+                    bool eat_improves = true;
+                    if (stop_has_improved[u]) {
+                        stop_has_improved[u] = false;
                         T eat_when_improved = parent[k-1][st].eat;
+                        // Find first departing trip after eat_when_improved:
                         int y_prev = y;
-                        if (stop_has_improved[u]) {
-                            if (y == y_end && x == x_beg) {// dicho for first
-                              auto lower =
-                               std::lower_bound(ttbl.stop_departures[u].begin(),
-                                              ttbl.stop_departures[u].end(),
-                                              eat_when_improved + min_chg_bef);
-                              y = std::distance(ttbl.stop_departures[u].begin(),
-                                                lower);
-                            } else {
-                                while (y-1 >= 0
-                                       && ttbl.stop_departures[u][y-1]
-                                       >= eat_when_improved + min_chg_bef) {
-                                    --y;
-                                }
+                        if (x == x_beg) {// dicho for first
+                            auto lower =
+                              std::lower_bound(ttbl.stop_departures[u].begin(),
+                                               ttbl.stop_departures[u].end(),
+                                               eat_when_improved + min_chg_bef);
+                            y = std::distance(ttbl.stop_departures[u].begin(),
+                                              lower);
+                        } else {
+                            while (y-1 >= 0
+                                   && ttbl.stop_departures[u][y-1]
+                                   >= eat_when_improved + min_chg_bef) {
+                                --y;
                             }
-                            if (y < y_prev) {//better if == and k == 1 
-                                par = u;
-                                par_eat = eat_when_improved; // TODO: measure waiting time, this does not work: ttbl.stop_departures[u][y];
-                            } 
                         }
+                        if (y < y_prev) {
+                            par = u;
+                            par_eat = eat_when_improved; // TODO: measure waiting time, this does not work: ttbl.stop_departures[u][y];
+                            eat_improves = false;
+                        } 
                     }
+                    // stop_prev_dep:
                     if (y < y_end) {
                         if (y == 0) stop_prev_dep[u] = - ttbl.t_max;
                         else stop_prev_dep[u] = trips[y-1][x].second;
                     }
-                    stop_has_improved[u] = false;
                     // target pruning:
                     if (x >= x_last && (y == y_end
-                         || trips[y][x].second + min_chg_aft >= st_eat[dst])){
+                         || trips[y][x].first + min_chg_aft >= st_eat[dst])){
                         break;
+                    }
+                    // Improve eat:
+                    if (y < y_end && eat_improves) {
+                        T eat = st_eat[st];
+                        T arr = trips[y][x].first + min_chg_aft;
+                        if (arr < eat) {
+                            assert(par != not_stop_index);
+                            reach_station_trip(st, arr, arr-par_eat, r, par, k);
+                        }
                     }
                 }
                 route_has_improved_from[r] = not_stop_index;
@@ -718,7 +721,7 @@ public:
                               use_hubs, use_transfers, 0, min_chg, k_max, true);
             const int k_arr_rev = n_trips[dst];
 
-            //*
+            /*
             std::cerr <<"\n   "<< src <<" "<< dst <<" "<< t
                       <<", hubs="<< use_hubs
                       <<", walktime="<< walk_time <<" ---\n";

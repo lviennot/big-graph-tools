@@ -209,6 +209,17 @@ int main (int argc, char **argv) {
         std::cout <<" -------- "<< (hubs ? "HL_" : "") <<"CSA "
                   <<"from "<< src << "=" << ttbl.station_id[src] <<" at "<< t;
         csa.print_journey(dst, hubs, ! hubs, std::cout, chg);
+
+        std::cout <<" walk time "<< rpt.walking_time(7229, 10016) <<"\n";
+        int r = 1616, y = 4;
+        for (int i = 0; i < ttbl.trips_of[r][y].size(); ++i) {
+            int s = ttbl.route_stops[r][i];
+            int st = ttbl.stop_station[s];
+            std::cout <<"     "<< st <<"="<< ttbl.hub_id[st]
+                      <<" (stop "<< s <<" idx="<< i <<") at "
+                      << ttbl.trips_of[r][y][i].first
+                      <<", dep. "<< ttbl.trips_of[r][y][i].second <<"\n";
+        }
     }
 
     //* Arrival times
