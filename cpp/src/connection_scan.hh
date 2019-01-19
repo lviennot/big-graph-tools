@@ -464,6 +464,9 @@ public:
         assert(0 <= t_beg && t_beg <= t_end && t_end <= 3600*24);
         assert(ntr_max <= ntrips_max);
         assert(min_chg_bef > 0 || min_chg_aft > 0); // 0 is problematic with 0 delay connections
+
+        T t_last_arr = earliest_arrival_time(src, dst, t_end,
+                             use_hubs, use_transfers, min_chg_bef, ntr_max);
         
         // Regular scan to find reachable trips (30-40ms, HL: 100-300ms):
         if (do_pre_scan) {
@@ -503,14 +506,14 @@ public:
             }
         }
 
-        assert(t_end < conn_at_last.size());
-        assert(conn[conn_at_last[t_end]].arr <= t_end);
-        assert(conn_at_last[t_end] == conn.size() - 1
-               || conn[conn_at_last[t_end] + 1].arr > t_end);
+        t_last_arr = std::min(t_last_arr, (T)conn_at_last.size() - 1);
+        assert(conn[conn_at_last[t_last_arr]].arr <= t_last_arr);
+        assert(conn_at_last[t_last_arr] == conn.size() - 1
+               || conn[conn_at_last[t_last_arr] + 1].arr > t_last_arr);
 
         int n_conn = 0, n_conn_skipped = 0;
         
-        for (int i = conn_at_last[t_end]; i != -1; --i) {
+        for (int i = conn_at_last[t_last_arr]; i != -1; --i) {
             const connection &c = conn[i];
             ++n_conn;
             if (do_pre_scan && trip_board[c.trip] == not_stop_index) {

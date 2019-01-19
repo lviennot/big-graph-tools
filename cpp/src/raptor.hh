@@ -736,20 +736,24 @@ public:
         T prev_arr = - ttbl.t_max;
         pset profile;
         for (T t = t_beg; t < t_end; ) {
-            //const T arr = earliest_arrival_time(src, dst, t,
-            //                 use_hubs, use_transfers, min_chg, 0, k_max, true);
+            const T arr = earliest_arrival_time(src, dst, t,
+                             use_hubs, use_transfers, min_chg, 0, k_max, true);
+            const int k_arr = n_trips[dst];
+            /*
             int pssize = earliest_walk_pareto(src, dst, t,
                                               use_hubs, use_transfers,
                                               min_chg, k_max);
             T arr = pareto_eat_walk_to(dst).min_x(ttbl.t_max);
             const int k_arr = dst_pareto_kmax;
+            */
+            
             if (arr >= t_end) break;
             
             const T dep = - rev_rpt.earliest_arrival_time(dst, src, - arr,
                               use_hubs, use_transfers, 0, min_chg, k_max, true);
             const int k_arr_rev = n_trips[dst];
 
-            /*
+            //*
             std::cerr <<"\n   "<< src <<" "<< dst <<" "<< t
                       <<", hubs="<< use_hubs
                       <<", walktime="<< walk_time <<" ---\n";
@@ -921,15 +925,15 @@ public:
                     const std::vector<point> &pts = tmp_pareto[fst].pts;
                     assert(pts.size() > 0);
                     if (y < y_end) {
-                        T lst = pts[pts.size() - 1].x;
+                        T lst = pts[0].x;
                         if (ttbl.stop_departures[fst][y] < lst + min_chg_time) {
                             y = y_end;
                         } else {
                             ++y; // so that y < y_prev bellow
                         }
                     }
-                    for (int i = pts.size() - 1; i != -1; --i) {
-                        T arr = pts[i].x, wlk = pts[i].y;
+                    for (auto p : pts) {
+                        T arr = p.x, wlk = p.y;
                         int y_prev = y;
                         while (y-1 >= 0
                                && ttbl.stop_departures[fst][y-1]

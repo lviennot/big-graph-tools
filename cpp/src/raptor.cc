@@ -128,9 +128,9 @@ int main (int argc, char **argv) {
     // ------------------ read queries -------------------
     int n_q = 0;
     std::vector<std::tuple<int, int, int> > queries;
-    if (get_opt(argc, argv, "-query-file=", "queries-rank.csv") != "") {
+    if (get_opt(argc, argv, "-query-file=", "queries-unif.csv") != "") {
         auto rows = read_csv
-            (dir + get_opt(argc, argv, "-query-file=", "queries-rank.csv"), 3,
+            (dir + get_opt(argc, argv, "-query-file=", "queries-unif.csv"), 3,
              "source", "destination", "departure_time");
              //"source", "target", "time");
         int n_q_max = std::stoi(get_opt(argc, argv, "-nq=", "10000"));
@@ -416,56 +416,6 @@ int main (int argc, char **argv) {
     // */
     
 
-    
-    // go profile Raptor
-    sum = 0, n_ok = 0;
-    for (auto q : queries) {
-        int src = std::get<0>(q);
-        int dst = std::get<1>(q);
-        int t = std::get<2>(q);
-        int t_beg = has_opt(argc, argv, "-2h-range") ? t : 0;
-        int t_end = has_opt(argc, argv, "-2h-range") ? t + 7200 : 24 * 3600;
-        std::cout << src <<" "<< dst
-                  <<" ["<< t_beg <<","<< t_end <<") : ";
-        pset prof = rpt.profile(rev_rpt, src, dst, t_beg, t_end,
-                                 false, true, chg);
-        int ntrips = prof.size();
-        std::cout << ntrips <<"\n";
-        sum += ntrips;
-        ++n_ok;
-    }
-    main_log.cerr(t) << n_q << " Profile Raptor queries done, avg_ntrips = "
-                     << (sum / n_ok)
-                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
-    t = main_log.lap();
-
-    
-    // go profile CSA
-    sum = 0, n_ok = 0;
-    bool prescan = has_opt(argc, argv, "-csa-profile-prescan");
-    int t_get = std::stoi(get_opt(argc, argv, "-t-beg=", "0"));
-    for (auto q : queries) {
-        int src = std::get<0>(q);
-        int dst = std::get<1>(q);
-        int t = std::get<2>(q);
-        int t_beg = has_opt(argc, argv, "-2h-range") ? t : 0;
-        int t_end = has_opt(argc, argv, "-2h-range") ? t + 7200 : 24 * 3600;
-        std::cout << src <<"(="<< ttbl.station_id[src] <<") "
-                  << dst <<"(="<< ttbl.station_id[dst] <<") "
-                  <<" ["<< t_beg <<","<< t_end<<") : ";
-        pset prof = csa.profile(src, dst, t_beg, t_end, false, true, chg,
-                                0, km, prescan);
-        int ntrips = prof.size();
-        std::cout << ntrips <<"\n";
-        sum += ntrips;
-        ++n_ok;
-    }
-    main_log.cerr(t) << n_q << " Profile CSA queries done, avg_ntrips = "
-                     << (sum / n_ok)
-                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
-    t = main_log.lap();
-    // */    
-
 
 
     if (has_opt(argc, argv, "-exit")) exit(0);
@@ -551,6 +501,46 @@ int main (int argc, char **argv) {
                      << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
     t = main_log.lap();
 
+    
+    
+    //* go Pareto
+    sum = 0, n_ok = 0;
+    for (auto q : queries) {
+        int src = std::get<0>(q);
+        int dst = std::get<1>(q);
+        int t = std::get<2>(q);
+        int npath = rpt.earliest_walk_pareto(src, dst, t, false, true, chg);
+        if (npath > 0) {
+            sum += npath;
+            ++n_ok;
+        }
+    }
+    main_log.cerr(t) << n_q << " Pareto Raptor queries done, avg_npaths = "
+                     << (sum / n_ok)
+                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
+    t = main_log.lap();
+    // */
+    
+    //* go HLPareto
+    sum = 0, n_ok = 0;
+    for (auto q : queries) {
+        int src = std::get<0>(q);
+        int dst = std::get<1>(q);
+        int t = std::get<2>(q);
+        //int arr = rpt.earliest_arrival_time(src, dst, t, hub, trf, chg);
+        int npath = rpt.earliest_walk_pareto(src, dst, t, hub, trf, chg);
+        if (npath > 0) {
+            sum += npath;
+            ++n_ok;
+        }
+    }
+    main_log.cerr(t) << n_q << " Pareto HLRaptor queries done, avg_npaths = "
+                     << (sum / n_ok)
+                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
+    t = main_log.lap();
+    // */
+
+
 
     // go last departure Raptor
     sum = 0, n_ok = 0;
@@ -573,6 +563,57 @@ int main (int argc, char **argv) {
                      << (sum / n_ok)
                      << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
     t = main_log.lap();
+
+
+    
+    // go profile Raptor
+    sum = 0, n_ok = 0;
+    for (auto q : queries) {
+        int src = std::get<0>(q);
+        int dst = std::get<1>(q);
+        int t = std::get<2>(q);
+        int t_beg = has_opt(argc, argv, "-2h-range") ? t : 0;
+        int t_end = has_opt(argc, argv, "-2h-range") ? t + 7200 : 24 * 3600;
+        std::cout << src <<" "<< dst
+                  <<" ["<< t_beg <<","<< t_end <<") : ";
+        pset prof = rpt.profile(rev_rpt, src, dst, t_beg, t_end,
+                                 false, true, chg);
+        int ntrips = prof.size();
+        std::cout << ntrips <<"\n";
+        sum += ntrips;
+        ++n_ok;
+    }
+    main_log.cerr(t) << n_q << " Profile Raptor queries done, avg_ntrips = "
+                     << (sum / n_ok)
+                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
+    t = main_log.lap();
+
+    
+    // go profile CSA
+    sum = 0, n_ok = 0;
+    bool prescan = has_opt(argc, argv, "-csa-profile-prescan");
+    int t_get = std::stoi(get_opt(argc, argv, "-t-beg=", "0"));
+    for (auto q : queries) {
+        int src = std::get<0>(q);
+        int dst = std::get<1>(q);
+        int t = std::get<2>(q);
+        int t_beg = has_opt(argc, argv, "-2h-range") ? t : 0;
+        int t_end = has_opt(argc, argv, "-2h-range") ? t + 7200 : 24 * 3600;
+        std::cout << src <<"(="<< ttbl.station_id[src] <<") "
+                  << dst <<"(="<< ttbl.station_id[dst] <<") "
+                  <<" ["<< t_beg <<","<< t_end<<") : ";
+        pset prof = csa.profile(src, dst, t_beg, t_end, false, true, chg,
+                                0, km, prescan);
+        int ntrips = prof.size();
+        std::cout << ntrips <<"\n";
+        sum += ntrips;
+        ++n_ok;
+    }
+    main_log.cerr(t) << n_q << " Profile CSA queries done, avg_ntrips = "
+                     << (sum / n_ok)
+                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
+    t = main_log.lap();
+    // */    
 
 
     // go profile HLRaptor
@@ -627,46 +668,6 @@ int main (int argc, char **argv) {
                      << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
     t = main_log.lap();
     // */    
-    
-
-    //* go Pareto
-    sum = 0, n_ok = 0;
-    for (auto q : queries) {
-        int src = std::get<0>(q);
-        int dst = std::get<1>(q);
-        int t = std::get<2>(q);
-        int npath = rpt.earliest_walk_pareto(src, dst, t, false, true, chg);
-        if (npath > 0) {
-            sum += npath;
-            ++n_ok;
-        }
-    }
-    main_log.cerr(t) << n_q << " Pareto Raptor queries done, avg_npaths = "
-                     << (sum / n_ok)
-                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
-    t = main_log.lap();
-    // */
-    
-    //* go HLPareto
-    sum = 0, n_ok = 0;
-    for (auto q : queries) {
-        int src = std::get<0>(q);
-        int dst = std::get<1>(q);
-        int t = std::get<2>(q);
-        //int arr = rpt.earliest_arrival_time(src, dst, t, hub, trf, chg);
-        int npath = rpt.earliest_walk_pareto(src, dst, t, hub, trf, chg);
-        if (npath > 0) {
-            sum += npath;
-            ++n_ok;
-        }
-    }
-    main_log.cerr(t) << n_q << " Pareto HLRaptor queries done, avg_npaths = "
-                     << (sum / n_ok)
-                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
-    t = main_log.lap();
-    // */
-
-
 
     // ------------------------ end -------------------------
     main_log.cerr() << "end "<< dir <<"\n";
