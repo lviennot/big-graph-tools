@@ -753,7 +753,7 @@ public:
                               use_hubs, use_transfers, 0, min_chg, k_max, true);
             const int k_arr_rev = n_trips[dst];
 
-            //*
+            /*
             std::cerr <<"\n   "<< src <<" "<< dst <<" "<< t
                       <<", hubs="<< use_hubs
                       <<", walktime="<< walk_time <<" ---\n";
