@@ -70,6 +70,11 @@ public:
         return x_max;
     }
 
+    W min_x(W dft) const {
+        if (pts.empty()) return dft;
+        return pts.back().x;
+    }
+
     bool add(W x, W y) { // returns true if point was added
         bool insert = false;
         auto p = pts.rbegin(), pts_end = pts.rend();

@@ -37,7 +37,8 @@ private:
     std::vector<pset> all_pareto, incr_pareto, tmp_pareto, //eat vs walking time
         prev_dep_pareto, dst_pareto; //eat vs walking time at stop/destination
     //std::vector<T> eat; // earliest arrival time at stop
-
+    int dst_pareto_kmax; // max nb of trips in dst pareto set
+    
     struct parent_t {
         bool trip;
         union {
@@ -79,6 +80,7 @@ public:
           n_trips(tt.n_h), stop_prev_dep(tt.n_s),
           all_pareto(tt.n_h), incr_pareto(tt.n_h),
           tmp_pareto(tt.n_s), dst_pareto(ntrips_max + 1),
+          dst_pareto_kmax(0),
           prev_dep_pareto(tt.n_s),
           station_has_improved(tt.n_st, false),
           hub_has_improved(tt.n_h, false),
@@ -734,9 +736,13 @@ public:
         T prev_arr = - ttbl.t_max;
         pset profile;
         for (T t = t_beg; t < t_end; ) {
-            const T arr = earliest_arrival_time(src, dst, t,
-                             use_hubs, use_transfers, min_chg, 0, k_max, true);
-            const int k_arr = n_trips[dst];
+            //const T arr = earliest_arrival_time(src, dst, t,
+            //                 use_hubs, use_transfers, min_chg, 0, k_max, true);
+            int pssize = earliest_walk_pareto(src, dst, t,
+                                              use_hubs, use_transfers,
+                                              min_chg, k_max);
+            T arr = pareto_eat_walk_to(dst).min_x(ttbl.t_max);
+            const int k_arr = dst_pareto_kmax;
             if (arr >= t_end) break;
             
             const T dep = - rev_rpt.earliest_arrival_time(dst, src, - arr,
@@ -820,7 +826,8 @@ public:
         for (int i = 0; i < ttbl.n_s; ++i) { tmp_pareto[i].clear(); }
         for (int i = 0; i < ttbl.n_s; ++i) { prev_dep_pareto[i].clear(); }
         for (int i = 0; i <= k_max; ++i) { dst_pareto[i].clear(); }
-
+        dst_pareto_kmax = 0;
+        
         auto reach_station_trip = [this, dst](ST st, T t, T w) {
             if ((! all_pareto[dst].dominates(t, w)) // target prun
                 && all_pareto[st].add(t, w)) {
@@ -1046,8 +1053,12 @@ public:
             }
             
             dst_pareto[k] = all_pareto[dst];
+            if (dst_pareto[k].size() > 0) dst_pareto_kmax = k;
         }
-        if (k <= k_max) dst_pareto[k] = all_pareto[dst];
+        if (k <= k_max) {
+            dst_pareto[k] = all_pareto[dst];
+            if (dst_pareto[k].size() > 0) dst_pareto_kmax = k;
+        }
 
         if (k > k_max) {
             for (const R r : improved_routes) {
@@ -1094,6 +1105,10 @@ public:
             return ttbl.t_max;
         }
         */
+    }
+
+    pset pareto_eat_walk_to(ST st) {
+        return all_pareto[st];
     }
 
     T test(int n_q, T t_beg, T t_end) {
