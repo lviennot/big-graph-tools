@@ -140,7 +140,10 @@ public:
                   });
         inhubs.set_edges(edg, n_h);
         std::cerr << inhubs.n() <<" in-hubs, avg in-degree "
-                  << (inhubs.m() / n_st) <<"\n";
+                  << (inhubs.m() / n_st)
+                  <<", avg out-degree "<< inhubs.m() / n_h
+                  <<", max out-degree "<< inhubs.max_degree()
+                  <<"\n";
         // out-hubs :
         edg.clear();
         for (int st = 0; st < n_st; ++st) seen[st] = false;
@@ -165,7 +168,10 @@ public:
                   });
         outhubs.set_edges(edg, n_h);
         std::cerr << outhubs.n() <<" out-hubs, avg out-degree "
-                  << (outhubs.m() / n_st) <<"\n";
+                  << (outhubs.m() / n_st)
+                  <<", max out-degree "<< outhubs.max_degree()
+                  <<", avg in-degree "<< outhubs.m() / n_h
+                  <<"\n";
         std::cerr << n_h <<" hubs\n";
 
         // Check weight sort:

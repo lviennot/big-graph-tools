@@ -1,4 +1,6 @@
-RSYNC:=rsync -v -e ssh --inplace -r --exclude '*~' --exclude '\#*' 
+RSYNC:=rsync -v -e ssh --inplace -r --relative --exclude '*~' --exclude '\#*' 
+CLUST:=rioc.inria.fr
+CLUST_DIR:=graph/cpp
 
 
 # -------------------- compile ------------------------
@@ -143,9 +145,17 @@ alleatpar:
 		make $${dir}/$*; \
 	done
 
-%.raptor: raptor.o
-	echo $$HOSTNAME $$OAR_JOB_ID
+%.raptor: raptor.o hostinfo
 	make $*
+
+.PHONY: hostinfo
+hostinfo:
+	echo $$HOSTNAME $$OAR_JOB_ID
+
+%.3:
+	for dir in London Paris Switzerland; do \
+		make $${dir}/$*;\
+	done
 
 %.rioc3: _scp
 	for dir in London Paris Switzerland; do \
@@ -157,10 +167,22 @@ riocCSA3: _scp
 		make $${dir}.CSA.rioc RESA=yes; sleep 1;\
 	done
 
-%.eat:
+%.eat: %
+	$(eval TMP:=$*_)
 	$(eval DIR:=`dirname $*`)
 	$(eval QRY:=`basename $*`)
-	./raptor.o $(DIR) -query-file=$(QRY) -arrival-times > $@
+	./raptor.o $(DIR) -query-file=$(QRY) -arrival-times -exit > $(TMP)
+	mv -f $(TMP) $@
+
+
+%.all:
+	$(eval TMP:=$*_)
+	make $(TMP).mkdir
+	$(eval DIR:=`dirname $*`)
+	$(eval QRY:=`basename $*`)
+	$(eval PRESCAN:=$(if $(findstring Switzerland,$(DIR)),-prescan,))
+	./raptor.o $(DIR) -query-file=$(QRY) -arrival-times $(PRESCAN) > $(TMP)
+	mv -f $(TMP) $@
 
 %.CSA:
 	echo $$HOSTNAME $$OAR_JOB_ID
@@ -175,19 +197,34 @@ riocCSA3: _scp
 
 %.cp:
 	cp $* /Volumes/files.inria.fr/gang/road/graphs/public_transport/$*
-	scp $* rioc.inria.fr:graph/cpp/$*
+	scp $* $(CLUST):$(CLUST_DIR)/$*
 
 
 # ---------------- queries -------------------
 
-%/arrival_times.csv:
-	./raptor.o $* -query-file=queries-all.csv -arrival-times > $@
+
+%-rank.csv: %.csv
+	$(eval DIR:=`dirname $<`)
+	$(eval QRY:=`basename $<`)
+	./raptor.o $(DIR) -exit -query-file=$(QRY) -nq=100 -rank > $@ 
+
+%-unif.csv: %.csv
+	$(eval DIR:=`dirname $<`)
+	$(eval QRY:=`basename $<`)
+	./raptor.o $(DIR) -exit -query-file=$(QRY) -nq=1000 -rerank > $@ 
+
 
 %/queries-loc10pct.csv: %/arrival_times.csv
 	(echo "source,target,time"; tail -n +2 $^ | awk -F, '{ print $$1, $$2, $$3, $$6-$$3}' | sort -n -k 4 | head -n 1000 | tr " " "," | cut -d, -f1-3) > $@
 
-%/queries-loc30pct.csv: %/arrival_times.csv
-	(echo "source,target,time"; tail -n +2 $^ | awk -F, '{ print $$1, $$2, $$3, $$6-$$3, NR}' | sort -n -k 4 | head -n 3000 | sort -n -k 7 | head -n 1000 | tr " " "," | cut -d, -f1-3) > $@
+%/queries-loc10pct.tail: %/arrival_times.csv
+	tail -n +2 $^ | awk -F, '{ print $$1, $$2, $$3, $$6-$$3}' | sort -n -k 4 | head -n 1000 | grep -v -E '[0-9]{10}' | tail -n 1
+
+%/queries-prox10pct.csv: %/arrival_times.csv
+	(echo "source,target,time"; tail -n +2 $^ | awk -F, '{ print $$1, $$2, $$3, $$4-$$3}' | sort -n -k 4 | head -n 1000 | tr " " "," | cut -d, -f1-3) > $@
+
+%/queries-prox10pct.tail: %/arrival_times.csv
+	tail -n +2 $^ | awk -F, '{ print $$1, $$2, $$3, $$4-$$3}' | sort -n -k 4 | head -n 1000 | grep -v -E '[0-9]{10}' | tail -n 1
 
 %/queries-2h.csv: %/arrival_times.csv
 	(echo "source,target,time"; tail -n +2 $^ | awk -F, '{if ($$4 - $$3 <= 7200) print $$1","$$2","$$3}' | head -n 1000) > $@
@@ -210,6 +247,14 @@ getres:
 	tail -n +2 $< | awk -F, '{if($$4 < 100000000) print $$1, $$2, $$3, $$5, $$5, $$6, 100.*($$4-$$5)/($$5-$$3)}' | sort -n -k 7 > $@
 
 
+
+%.mkdir:
+	@d=`dirname $*` ;\
+	if [ "$$d" != "." -a ! -e "$$d" ] ; then \
+	p=`dirname $$d`;\
+	make $$p.mkdir ;\
+	mkdir -p $$d ;\
+	fi
 
 %.cat: %
 	cat $*
@@ -253,27 +298,33 @@ getres:
 	$(eval ALL:=nodes=1/cpu=2/core=6,walltime=96:00:00)
 	$(eval CPU:=$(if $(RESA),$(ALL),nodes=1/cpu=1/core=$(if $(CORE),$(CORE),1),walltime=24:00:00))
 	echo $(CPU)
-	ssh rioc.inria.fr 'cd graph/cpp; oarsub -p mem\>=30 -l $(CPU) "make $*"; sleep 5; echo; echo " --- stdout:"; cat  `ls OAR.*.stdout | tail -n 1`; sleep 10; echo; echo " ---stderr:"; cat  `ls OAR.*.stderr | tail -n 1`; echo'
+	ssh $(CLUST) 'cd $(CLUST_DIR); oarsub -p mem\>=30 -l $(CPU) "make $*"; sleep 5; echo; echo " --- stdout:"; cat  `ls OAR.*.stdout | tail -n 1`; sleep 10; echo; echo " ---stderr:"; cat  `ls OAR.*.stderr | tail -n 1`; echo'
 
 stat:
-	ssh rioc.inria.fr oarstat
+	ssh $(CLUST) oarstat
 
 scp: _scp
 
 _scp: myMakefile Makefile $(HDRS) $(CTRS)
-	$(RSYNC) myMakefile Makefile src rioc.inria.fr:graph/cpp/
+	$(RSYNC) myMakefile Makefile src $(CLUST):$(CLUST_DIR)/
 	cp -f Makefile myMakefile
 	touch $@
 
 %.scp:
-	$(RSYNC) $* rioc.inria.fr:graph/cpp/
+	$(RSYNC) $* $(CLUST):$(CLUST_DIR)/
+
+%.get:
+	scp $(CLUST):$(CLUST_DIR)/$* $*
 
 
 # ------------------ test some macros -----------------------
 
-t:
+%.t:
 	$(eval ALL:=$(if $(ALL),yes,no))
-	echo $(ALL)
+ifeq ($(ALL),y)
+	echo "---- y ---"
+endif
+	echo "chg? ---$(ALL)---"
 
 define MAC
 1

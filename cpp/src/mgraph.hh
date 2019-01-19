@@ -81,6 +81,16 @@ public:
 
     V degree(V u) const { return (int) sdeg[u+1] - sdeg[u]; }
 
+    V max_degree() const {
+        assert(n_ > 0);
+        V d = degree(0);
+        for (V u = 1; u < n_; ++u) {
+            V du = degree(u);
+            if (du > d) d = du;
+        }
+        return d;
+    }
+    
     size_t degree_sum(V u) const { return sdeg[u]; }
     
     // asserts sorted adjacency lists (use g.reverse() or g.reverse().reverse())

@@ -130,8 +130,9 @@ int main (int argc, char **argv) {
     std::vector<std::tuple<int, int, int> > queries;
     if (get_opt(argc, argv, "-query-file=", "queries.csv") != "") {
         auto rows = read_csv
-            (dir + get_opt(argc, argv, "-query-file=", "queries.csv"),
-             3, "source", "target", "time");
+            (dir + get_opt(argc, argv, "-query-file=", "queries.csv"), 3,
+             "source", "destination", "departure_time");
+             //"source", "target", "time");
         int n_q_max = std::stoi(get_opt(argc, argv, "-nq=", "10000"));
         for (auto r : rows) {
             if (n_q >= n_q_max) break;
@@ -232,10 +233,10 @@ int main (int argc, char **argv) {
             int t = std::get<2>(q);
             int arr1 = rpt.earliest_arrival_time(src, dst, t, false, true, chg);
             int arr2 = csa.earliest_arrival_time(src, dst, t, false, true, chg);
-            // assert(arr1 == arr2); // can fail if chg == 0
+            assert(arr1 == arr2); // can fail if chg == 0
             int arrHL1 = rpt.earliest_arrival_time(src, dst, t, hub, trf, chg);
             int arrHL2 = csa.earliest_arrival_time(src, dst, t, hub, trf, chg);
-            //assert(arrHL1 == arrHL2); // can fail if chg == 0
+            assert(arrHL1 == arrHL2); // can fail if chg == 0
             std::cout << ttbl.station_id[src] <<","<< ttbl.station_id[dst]
                       <<","<< t <<","<< arr1 <<","<< arrHL1
                       <<","<< (t + rpt.walking_time(src, dst)) <<"\n";
@@ -244,9 +245,178 @@ int main (int argc, char **argv) {
         }
         main_log.cerr(t) << n_ok << " arrival times\n";
         t = main_log.lap();
-        exit(0);
     }
     // */
+
+    //* One to all arrival times
+    if (has_opt(argc, argv, "-one-to-all")) {
+        bool hubs = has_opt(argc, argv, "-hubs");
+        std::srand(std::time(0));
+        n_ok = 0;
+        std::cout <<"src,tdep,nb_reached,rank,dst,travel_time,walk_time\n";
+        for (auto q : queries) {
+            int src = std::get<0>(q);
+            int t = std::get<2>(q);
+            int nvis = rpt.eat_one_to_all(src, t, hubs, ! hubs, chg);
+            std::vector<std::tuple<int, int, int> > eat(ttbl.n_st);
+            for (int i = 0; i < ttbl.n_st; ++i) {
+                eat[i] = std::make_tuple(i, rpt.eat_to(i),
+                                         rpt.walking_time(src, i)) ;
+            }
+            std::sort(eat.begin(), eat.end(),
+                      [](const std::tuple<int, int, int>&a,
+                         const std::tuple<int, int, int>&b){
+                          if (std::get<1>(a) != std::get<1>(b))
+                              return std::get<1>(a) < std::get<1>(b);
+                          return std::get<2>(a) < std::get<2>(b);
+                      });
+            for (int r = 0; r < ttbl.n_st; ++r) {
+                int st = std::get<0>(eat[r]), arr = std::get<1>(eat[r]),
+                    walk = std::get<2>(eat[r]);
+                std::cout << ttbl.station_id[src]<<","<< t <<","<< nvis
+                          <<","<< r <<","<< ttbl.station_id[st]
+                          <<","<< (arr - t) <<","<< walk <<"\n";
+            }
+            std::cout.flush();
+            ++n_ok;
+        }
+        main_log.cerr(t) << n_ok << " one to all arrival times\n";
+        t = main_log.lap();
+    }
+    // */
+
+    //* Generate queries by walking time rank
+    if (has_opt(argc, argv, "-rank")) {
+        bool hubs = true, trf = true;
+        bool walk_rank = ! has_opt(argc, argv, "-travel-rank");
+        bool all_ranks = has_opt(argc, argv, "-all-ranks");
+        std::srand(std::time(nullptr));
+        n_ok = 0;
+        std::cout <<"source,destination,departure_time"
+                  <<",log2_of_station_rank,station_rank,walk_time\n";
+        std::vector<bool> seen(ttbl.n_st, false);
+        for (auto q : queries) {
+            if (n_ok >= std::stoi(get_opt(argc, argv, "-nq=", "1000"))) break;
+            int src = std::get<0>(q);
+            int dst = std::get<1>(q);
+            int t = std::get<2>(q);
+            if (seen[src]) continue;
+            seen[src] = true;
+            int nvis = rpt.eat_one_to_all(src, t, ! trf, trf, chg);
+            std::vector<std::tuple<int, int, int> > eat(ttbl.n_st);
+            for (int i = 0; i < ttbl.n_st; ++i) {
+                eat[i] = std::make_tuple(i, rpt.walking_time(src, i),
+                                         rpt.eat_to(i));
+            }
+            std::sort(eat.begin(), eat.end(),
+                      [src, walk_rank](const std::tuple<int, int, int>&a,
+                                       const std::tuple<int, int, int>&b){
+                          if (walk_rank) {
+                              if (std::get<1>(a) != std::get<1>(b))
+                                  return std::get<1>(a) < std::get<1>(b);
+                              if (std::get<0>(a) == src) return true;
+                              if (std::get<0>(b) == src) return false;
+                              return std::get<0>(a) < std::get<0>(b);
+                          } else {
+                              if (std::get<2>(a) != std::get<2>(b))
+                                  return std::get<2>(a) < std::get<2>(b);
+                              if (std::get<1>(a) != std::get<1>(b))
+                                  return std::get<1>(a) < std::get<1>(b);
+                              if (std::get<0>(a) == src) return true;
+                              if (std::get<0>(b) == src) return false;
+                              return std::get<0>(a) < std::get<0>(b);
+                          }
+                      });
+            int nvis_unrestr = rpt.eat_one_to_all(src, t, hubs, ! hubs, chg);
+            int r_dst = -1;
+            for (int r = 0; r < ttbl.n_st; ++r) {
+                if (std::get<0>(eat[r]) == dst) r_dst = r;
+            }
+            int log_n_st = 0, rl = ttbl.n_st - 1;
+            while (rl > 1) { rl /= 2; ++log_n_st; }
+            int log_rnd = std::rand() % (log_n_st + 1);
+            for (int rbase=2, log=1; 2*rbase <= ttbl.n_st; rbase *= 2, ++log){
+                if (all_ranks || log == log_rnd) {
+                    int r = rbase + (std::rand() % rbase);
+                    if (rbase <= r_dst && r_dst < 2*rbase) r = r_dst;
+                    int st = std::get<0>(eat[r]);
+                    int arr = std::get<2>(eat[r]), walk = std::get<1>(eat[r]);
+                    int unrestr = rpt.eat_to(st);
+                    std::cout
+                        << ttbl.station_id[src] <<","<< ttbl.station_id[st]
+                        <<","<< t <<","<< log <<","<< r <<","<< walk
+                        //<<","<< (arr == ttbl.t_max ? ttbl.t_max : arr - t)
+                     //<<","<<(unrestr == ttbl.t_max ? ttbl.t_max : unrestr - t)
+                        <<"\n";
+                }
+            }
+            std::cout.flush();
+            ++n_ok;
+        }
+        main_log.cerr(t) << n_ok << " eat times rank\n";
+        t = main_log.lap();
+    }
+    // */
+
+    //* Generate queries with times and walking-time station-rank
+    if (has_opt(argc, argv, "-rerank")) {
+        bool hubs = false;
+        std::srand(std::time(nullptr));
+        n_ok = 0;
+        std::cout <<"source,destination,departure_time"
+                  <<",log2_of_station_rank,station_rank,walk_time\n";
+        int src_prev = -1, t = 0, nvis = 0;
+        std::vector<std::tuple<int, int> > eat(ttbl.n_st);
+        for (auto q : queries) {
+            int src = std::get<0>(q);
+            int dst = std::get<1>(q);
+            int t_req = std::get<2>(q);
+            if (src != src_prev) {
+                bool preserve_time = ! has_opt(argc, argv, "-gen-times");
+                t = preserve_time ? t_req : std::rand() % (24*3600);
+                nvis = rpt.eat_one_to_all(src, t, hubs, ! hubs, chg);
+                for (int i = 0; i < ttbl.n_st; ++i) {
+                    eat[i] = std::make_tuple(i, rpt.walking_time(src, i));
+                }
+                std::sort(eat.begin(), eat.end(),
+                          [src](const std::tuple<int, int>&a,
+                             const std::tuple<int, int>&b){
+                              if (std::get<1>(a) != std::get<1>(b))
+                                  return std::get<1>(a) < std::get<1>(b);
+                              if (std::get<0>(a) == src) return true;
+                              if (std::get<0>(b) == src) return false;
+                              return std::get<0>(a) < std::get<0>(b);
+                          });
+                src_prev = src;
+            }
+            assert(std::get<0>(eat[0]) == src);
+            assert(rpt.eat_to(src) == t);
+            int r = -1, walk = 0;
+            for (int i = 0; i < ttbl.n_st; ++i) {
+                if (std::get<0>(eat[i]) == dst) {
+                    r = i;
+                    walk = std::get<1>(eat[i]);
+                    break;
+                }
+            }
+            assert(r > 0);
+            int log = 0, rl = r;
+            while (rl > 1) { rl /= 2; ++log; }
+            int arr = rpt.eat_to(dst);
+            std::cout << ttbl.station_id[src] <<","<< ttbl.station_id[dst]
+                      <<","<< t <<","<< log <<","<< r <<","<< walk
+                      //<<","<< (arr == ttbl.t_max ? ttbl.t_max : arr - t)
+                      <<"\n";
+            std::cout.flush();
+            ++n_ok;
+        }
+        main_log.cerr(t) << n_ok << " rerank\n";
+        t = main_log.lap();
+    }
+    // */
+    
+
+    if (has_opt(argc, argv, "-exit")) exit(0);
 
     
     // go profile CSA
@@ -289,9 +459,6 @@ int main (int argc, char **argv) {
                      << (sum / n_ok)
                      << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
     t = main_log.lap();
-
-
-    if (has_opt(argc, argv, "-exit-pr")) exit(0);
 
     
     // go profile HLCSA
@@ -340,10 +507,6 @@ int main (int argc, char **argv) {
     // */    
 
 
-    
-    if (has_opt(argc, argv, "-exit")) exit(0);
-    
-        
     
     // go Raptor restricted walk
     sum = 0, n_ok = 0;

@@ -75,7 +75,8 @@ private:
 public:
     raptor(const timetable &tt)
         : ttbl(tt),
-          st_eat(tt.n_h), n_trips(tt.n_h), stop_prev_dep(tt.n_s),
+          st_eat(tt.n_h+1), // a dummy dst for one to all queries
+          n_trips(tt.n_h), stop_prev_dep(tt.n_s),
           all_pareto(tt.n_h), incr_pareto(tt.n_h),
           tmp_pareto(tt.n_s), dst_pareto(ntrips_max + 1),
           prev_dep_pareto(tt.n_s),
@@ -118,10 +119,15 @@ public:
         std::cerr << transf.size() <<" transitive transfers: "
                   << asym << " reverse links miss, "
                   << transfers.asymmetry(true) <<" reverse weights differ\n";
+        std::cerr <<"  avg degree "<< (1.0*transfers.m()/transfers.n())
+                  <<", max degree "<< transfers.max_degree() <<"\n"; 
         assert(asym <= 100); // strange network otherwise
         
         rev_inhubs = tt.inhubs.reverse(); // sorted by ID, not weight
-
+        std::cerr <<"rev_inhubs avg degree "
+                  <<(1.0*rev_inhubs.m()/rev_inhubs.n())
+                  <<", max degree "<< rev_inhubs.max_degree() <<"\n";
+        
         // Check hub distances vs transfers
         outhubs = tt.outhubs.reverse().reverse(); // ID sorted
 
@@ -256,7 +262,7 @@ public:
         assert(k_max <= ntrips_max);
         
         // initialize
-        for (int i = 0; i < ttbl.n_h; ++i) { st_eat[i] = ttbl.t_max; }
+        for (int i = 0; i <= ttbl.n_h; ++i) { st_eat[i] = ttbl.t_max; }
         for (int i = 0; i < ttbl.n_h; ++i) { n_trips[i] = ntrips_max + 1000; }
         for (int i = 0; i < ttbl.n_s; ++i) { stop_prev_dep[i] = ttbl.t_max; }
 
@@ -333,7 +339,7 @@ public:
                 if (t_dep + e.wgt >= st_eat[dst]) break; // target prun
                 reach_station_walk(e.dst, t_dep + e.wgt, e.wgt, src, 0);
             }
-            for (auto e : rev_inhubs[dst]) {
+            if (dst < ttbl.n_st) for (auto e : rev_inhubs[dst]) {
                 reach_station_walk(dst, st_eat[e.dst] + e.wgt, e.wgt, e.dst, 0);
             }
             for (auto e : ttbl.outhubs[src]) {
@@ -562,6 +568,21 @@ public:
         return st_eat[dst];
     }
 
+    int eat_one_to_all(const ST src, const T t_dep,
+                            const bool use_hubs = true,
+                            const bool use_transfers = false,
+                            const T min_chg_bef = 60, // chg time before trip
+                            const T min_chg_aft = 0, // chg time after trip
+                        const int k_max = ntrips_max) {
+        earliest_arrival_time(src, ttbl.n_h, t_dep, use_hubs, use_transfers,
+                              min_chg_bef, min_chg_aft);
+        size_t nvis = 0;
+        for (ST i = 0; i < ttbl.n_st; ++i) {
+            if (st_eat[i] < ttbl.t_max) ++nvis;
+        }
+        return nvis;
+    }
+
     T eat_to(ST st) const { return st_eat[st]; }
     int nb_trips_to(ST st) const { return n_trips[st]; }
     
@@ -665,12 +686,13 @@ public:
 
     std::tuple<T, ST, ST> longest_transfer(ST dst, int k) {
         std::tuple<T, ST, ST> m{0, dst, dst}, prev{0, dst, dst};
-        bool first = true, prev_is_walk = false;
-        while (k > 0) {
+        bool last = true, prev_is_walk = false;
+        // We follow the journey backward:
+        while (k > 0) { // don't consider walk at begin
             const parent_t &par = parent[k][dst];
             ST par_st = par.trip ? ttbl.stop_station[par.stop] : par.station;
             if (par.trip) {
-                first = false;
+                last = false; // don't consider walk at end
                 prev_is_walk = false;
             } else { // walk
                 T w = par.dist;
@@ -678,7 +700,7 @@ public:
                                                          par_st,
                                                          std::get<2>(prev));
                 else prev = std::make_tuple(w, par_st, dst);
-                if ((! first) && std::get<0>(prev) > std::get<0>(m)) m = prev;
+                if ((! last) && std::get<0>(prev) > std::get<0>(m)) m = prev;
                 prev_is_walk = true;
             }
             dst = par_st;
