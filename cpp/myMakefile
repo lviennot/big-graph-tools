@@ -162,6 +162,9 @@ hostinfo:
 		make $${dir}/$*.raptor.rioc RESA=yes; sleep 1;\
 	done
 
+%.rioc1: _scp
+	make $*.raptor.rioc RESA=yes
+
 riocCSA3: _scp
 	for dir in London Paris Switzerland; do \
 		make $${dir}.CSA.rioc RESA=yes; sleep 1;\
@@ -184,6 +187,19 @@ riocCSA3: _scp
 	./raptor.o $(DIR) -query-file=$(QRY) -arrival-times $(PRESCAN) > $(TMP)
 	mv -f $(TMP) $@
 
+prt:
+	tail -n 12 OAR.96613.stderr | sed -e 's/-- +//' -e 's/s.*://' | awk '{if((0+$2) != 0) print 1000.0*$1/$2,$0}'
+	id () {for i in $*; do echo -n $i,; lab=`grep -e ",${i}[^0-9]" labels/stop_label.csv | cut -d, -f1`; echo -n $lab,; grep -e "^${lab}," gtfs/stops.txt; done }
+
+%.2hrange:
+	$(eval TMP:=$*_)
+	make $(TMP).mkdir
+	$(eval DIR:=`dirname $*`)
+	$(eval QRY:=`basename $*`)
+	$(eval PRESCAN:=$(if $(findstring Switzerland,$(DIR)),-prescan,))
+	./raptor.o $(DIR) -query-file=$(QRY) -2h-range $(PRESCAN) > $(TMP)
+	mv -f $(TMP) $@
+
 %.CSA:
 	echo $$HOSTNAME $$OAR_JOB_ID
 	$(eval HUNDR := grep -v -e '^[0-9]$$$$' -e '^[0-9][0-9]$$$$' -e '^[0-9][0-9][1-9]$$$$' -e '^[0-9][1-9][0-9]$$$$')
@@ -203,10 +219,15 @@ riocCSA3: _scp
 # ---------------- queries -------------------
 
 
-%-rank.csv: %.csv
+%-rank.csv: %-unif.csv
 	$(eval DIR:=`dirname $<`)
 	$(eval QRY:=`basename $<`)
-	./raptor.o $(DIR) -exit -query-file=$(QRY) -nq=100 -rank > $@ 
+	./raptor.o $(DIR) -exit -query-file=$(QRY) -nq=100 -rank -all-ranks > $@ 
+
+%-rank-long.csv: %-unif.csv
+	$(eval DIR:=`dirname $<`)
+	$(eval QRY:=`basename $<`)
+	./raptor.o $(DIR) -exit -query-file=$(QRY) -nq=1000 -rank -all-ranks > $@ 
 
 %-unif.csv: %.csv
 	$(eval DIR:=`dirname $<`)
@@ -295,10 +316,10 @@ getres:
 	rm -f $*; make $*
 
 %.rioc: _scp
-	$(eval ALL:=nodes=1/cpu=2/core=6,walltime=96:00:00)
+	$(eval ALL:=nodes=1/cpu=2/core=12,walltime=96:00:00)
 	$(eval CPU:=$(if $(RESA),$(ALL),nodes=1/cpu=1/core=$(if $(CORE),$(CORE),1),walltime=24:00:00))
 	echo $(CPU)
-	ssh $(CLUST) 'cd $(CLUST_DIR); oarsub -p mem\>=30 -l $(CPU) "make $*"; sleep 5; echo; echo " --- stdout:"; cat  `ls OAR.*.stdout | tail -n 1`; sleep 10; echo; echo " ---stderr:"; cat  `ls OAR.*.stderr | tail -n 1`; echo'
+	ssh $(CLUST) 'cd $(CLUST_DIR); oarsub -p mem\>=160 -l $(CPU) "make $*"; sleep 5; echo; echo " --- stdout:"; cat  `ls OAR.*.stdout | tail -n 1`; sleep 10; echo; echo " ---stderr:"; cat  `ls OAR.*.stderr | tail -n 1`; echo'
 
 stat:
 	ssh $(CLUST) oarstat

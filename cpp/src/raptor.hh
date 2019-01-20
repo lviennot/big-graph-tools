@@ -67,7 +67,7 @@ private:
 
     // transitively closed transfers:
     typedef timetable::graph graph;
-    graph transfers, rev_inhubs, outhubs; // ID sorted hubs
+    graph transfers, rev_transfers, rev_inhubs, outhubs; // ID sorted hubs
     //pruned_landmark_labeling<graph> pll_lb;
 
     std::vector<T> hub_to_dst; // to compute distances
@@ -124,6 +124,8 @@ public:
         std::cerr <<"  avg degree "<< (1.0*transfers.m()/transfers.n())
                   <<", max degree "<< transfers.max_degree() <<"\n"; 
         assert(asym <= 100); // strange network otherwise
+
+        rev_transfers = transfers.reverse(); // sort by ID
         
         rev_inhubs = tt.inhubs.reverse(); // sorted by ID, not weight
         std::cerr <<"rev_inhubs avg degree "
@@ -686,7 +688,8 @@ public:
              <<"\n";
     }
 
-    std::tuple<T, ST, ST> longest_transfer(ST dst, int k) {
+    std::tuple<T, ST, ST> longest_transfer(ST dst, int k = -1) {
+        if (k == -1) { k = n_trips[dst]; }
         std::tuple<T, ST, ST> m{0, dst, dst}, prev{0, dst, dst};
         bool last = true, prev_is_walk = false;
         // We follow the journey backward:
@@ -710,7 +713,39 @@ public:
         }
         return m;
     }
+
     
+    void print_missing_transfers(ST dst,
+                                 std::ostream &cout = std::cout, int k = -1) {
+        if (k == -1) { k = n_trips[dst]; }
+        T prev_wlk = 0;
+        ST prev_dst = dst;
+        bool last = true, prev_is_walk = false;
+        // We follow the journey backward:
+        while (k > 0) { // don't consider walk at begin
+            const parent_t &par = parent[k][dst];
+            int par_k = par.trip ? k-1 : k;
+            ST par_st = par.trip ? ttbl.stop_station[par.stop] : par.station;
+            if (par.trip) {
+                last = false; // don't consider walk at end
+                prev_is_walk = false;
+            } else { // walk
+                T wlk = par.dist;
+                ST s = par_st, d = prev_is_walk ? prev_dst : dst;
+                if (( ! last) && parent[par_k][s].trip
+                              && ! rev_transfers.has_edge(d, s)) {
+                    cout <<"missing_transfer "<< ttbl.station_id[s]
+                         <<" "<< ttbl.station_id[d]
+                         <<" "<< (prev_is_walk ? wlk + prev_wlk : wlk) <<"\n";
+                }
+                prev_is_walk = true;
+                prev_wlk = wlk;
+            }
+            prev_dst = dst;
+            dst = par_st;
+            k = par_k;
+        }
+    }
 
 
     pset profile(raptor &rev_rpt,
@@ -746,12 +781,18 @@ public:
             T arr = pareto_eat_walk_to(dst).min_x(ttbl.t_max);
             const int k_arr = dst_pareto_kmax;
             */
-            
-            if (arr >= t_end) break;
+
+            if (arr >= ttbl.t_max) {
+                if (walking_is_faster) {++n_dom_walk;} else {++n_walk; ++n_tr;}
+                break;
+            }
+            // For trip interval time: if (arr >= t_end) break;
             
             const T dep = - rev_rpt.earliest_arrival_time(dst, src, - arr,
                               use_hubs, use_transfers, 0, min_chg, k_max, true);
             const int k_arr_rev = n_trips[dst];
+
+            if (dep >= t_end) break;
 
             /*
             std::cerr <<"\n   "<< src <<" "<< dst <<" "<< t
@@ -766,6 +807,7 @@ public:
             // */            
             assert(dep >= t || arr >= t + walk_time);
             assert(arr > prev_arr);
+
 
             /*
             const T arr2 = earliest_arrival_time(src, dst, dep,

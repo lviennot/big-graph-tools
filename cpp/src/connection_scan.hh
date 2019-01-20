@@ -187,11 +187,11 @@ public:
                             const bool use_transfers = false,
                             const T min_chg_time = 60,
                             const int ntr_max = ntrips_max, // FIXME : works only when the number of trips remains <= ntr_max
-                            const T t_end = 0 // scan until t_end reached (used for profile pre-processing)
+                            const T t_end = -1000000000 // scan until t_end reached (used for profile pre-processing)
                             ) {
 
         assert(ntr_max <= ntrips_max);
-        assert(0 <= t_dep && t_dep <= 3600*24);
+        assert(0 <= t_dep && t_dep <= 3600*48);
         assert(min_chg_time > 0); // 0 is problematic with 0 delay connections
 
         T eat_estim = ttbl.t_max;
@@ -266,7 +266,8 @@ public:
                 }
             }
         }
-        
+
+        if (t_dep > conn.back().dep) return st_eat[dst]; // no more connection
         assert(t_dep < conn_at.size()); // seconds in a day
         assert(conn[conn_at[t_dep]].dep >= t_dep);
         assert(conn_at[t_dep] == 0 || conn[conn_at[t_dep] - 1 ].dep < t_dep);
@@ -461,18 +462,20 @@ public:
                 const bool do_pre_scan = false
                 ) {
 
-        assert(0 <= t_beg && t_beg <= t_end && t_end <= 3600*24);
+        assert(0 <= t_beg && t_beg <= t_end && t_end <= 3600*48);
         assert(ntr_max <= ntrips_max);
         assert(min_chg_bef > 0 || min_chg_aft > 0); // 0 is problematic with 0 delay connections
 
-        T t_last_arr = earliest_arrival_time(src, dst, t_end,
-                             use_hubs, use_transfers, min_chg_bef, ntr_max);
+        const T t_last_arr = earliest_arrival_time(src, dst, t_end,
+                                 use_hubs, use_transfers, min_chg_bef, ntr_max);
+
+        //std::cerr << t_beg <<" "<< t_end <<" "<< t_last_arr <<"\n";
         
         // Regular scan to find reachable trips (30-40ms, HL: 100-300ms):
         if (do_pre_scan) {
             assert(min_chg_aft == 0);
             earliest_arrival_time(src, dst, t_beg, use_hubs, use_transfers,
-                                  min_chg_bef, ntr_max, t_end);
+                                  min_chg_bef, ntr_max, t_last_arr);
         }
         
         // Initialize, but preserve: trip_board
@@ -506,14 +509,14 @@ public:
             }
         }
 
-        t_last_arr = std::min(t_last_arr, (T)conn_at_last.size() - 1);
-        assert(conn[conn_at_last[t_last_arr]].arr <= t_last_arr);
-        assert(conn_at_last[t_last_arr] == conn.size() - 1
-               || conn[conn_at_last[t_last_arr] + 1].arr > t_last_arr);
+        const T t_end_arr = std::min(t_last_arr, conn.back().arr);
+        assert(conn[conn_at_last[t_end_arr]].arr <= t_end_arr);
+        assert(conn_at_last[t_end_arr] == conn.size() - 1
+               || conn[conn_at_last[t_end_arr] + 1].arr > t_end_arr);
 
         int n_conn = 0, n_conn_skipped = 0;
         
-        for (int i = conn_at_last[t_last_arr]; i != -1; --i) {
+        for (int i = conn_at_last[t_end_arr]; i != -1; --i) {
             const connection &c = conn[i];
             ++n_conn;
             if (do_pre_scan && trip_board[c.trip] == not_stop_index) {
@@ -559,7 +562,7 @@ public:
                 if (use_transfers) {
                     for(auto e : rev_transfers[st_from]) {
                         T last_dep = c.dep - min_chg_bef - e.wgt;
-                        if (c_eat < t_end && last_dep >= t_beg)
+                        if (c_eat <= t_end_arr && t_beg <= last_dep)
                             all_pareto[e.dst].add(c_eat, - last_dep);
                         //if (e.dst == st_from) seen = true;
                     }
@@ -567,7 +570,7 @@ public:
                 if (use_hubs) {
                     for(auto e : rev_inhubs[st_from]) {
                         T last_dep = c.dep - min_chg_bef - e.wgt;
-                        if (c_eat < t_end && last_dep >= t_beg)
+                        if (c_eat <= t_end_arr && t_beg <= last_dep)
                             all_pareto[e.dst].add(c_eat, - last_dep);
                         //if (e.dst == st_from) seen = true;
                     }
@@ -596,6 +599,7 @@ public:
         int n_walk = 0;
         for (auto p : all_pareto[src].pts) {
             T arr = p.x, dep = - p.y;
+            if (dep >= t_end) continue;
             if (arr - dep > wlk_dst[src]) {
                 if ( ! walk_faster) {
                     ++n_walk;
@@ -610,10 +614,9 @@ public:
         }
         
         //all_pareto[src].print();
-        //all_pareto[dst].print();
 
-        std::cout <<"   with_trips="<< all_pareto[src].size()
-                  <<" nwalk="<< n_walk <<"    ";
+        //std::cout <<"   with_trips="<< all_pareto[src].size()
+        //          <<" nwalk="<< n_walk <<"    ";
         return src_pareto;
     }
 

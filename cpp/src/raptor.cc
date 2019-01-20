@@ -248,6 +248,21 @@ int main (int argc, char **argv) {
     }
     // */
 
+    //* Missing transfers
+    if (has_opt(argc, argv, "-missing-transfers")) {
+        bool hubs = true;
+        for (auto q : queries) {
+            int src = std::get<0>(q);
+            int t = std::get<2>(q);
+            int nvis = rpt.eat_one_to_all(src, t, hubs, ! hubs, chg);
+            for (int i = 0; i < ttbl.n_st; ++i) {
+                if (rpt.eat_to(i) < ttbl.t_max) {
+                    rpt.print_missing_transfers(i, std::cout);
+                }
+            }
+        }
+    }
+
     //* One to all arrival times
     if (has_opt(argc, argv, "-one-to-all")) {
         bool hubs = has_opt(argc, argv, "-hubs");
