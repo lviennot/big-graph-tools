@@ -145,7 +145,7 @@ alleatpar:
 		make $${dir}/$*; \
 	done
 
-%.raptor: raptor.o hostinfo
+%.raptor: hostinfo raptor.o 
 	make $*
 
 .PHONY: hostinfo
@@ -159,19 +159,21 @@ hostinfo:
 
 %.rioc3: _scp
 	for dir in London Paris Switzerland; do \
-		make $${dir}/$*.raptor.rioc RESA=yes; sleep 1;\
+		make $${dir}/$*.raptor.oarsub.ssh; sleep 1;\
 	done
 
 %.rioc1: _scp
-	make $*.raptor.rioc RESA=yes
+	make $*.raptor.oarsub.ssh
 
 riocCSA3: _scp
 	for dir in London Paris Switzerland; do \
 		make $${dir}.CSA.rioc RESA=yes; sleep 1;\
 	done
 
+MKTMP=$(shell mktemp -u $@.XXXX~)
+
 %.eat: %
-	$(eval TMP:=$*_)
+	$(eval TMP:=$(MKTMP))
 	$(eval DIR:=`dirname $*`)
 	$(eval QRY:=`basename $*`)
 	./raptor.o $(DIR) -query-file=$(QRY) -arrival-times -exit > $(TMP)
@@ -179,7 +181,7 @@ riocCSA3: _scp
 
 
 %.all:
-	$(eval TMP:=$*_)
+	$(eval TMP:=$(MKTMP))
 	make $(TMP).mkdir
 	$(eval DIR:=`dirname $*`)
 	$(eval QRY:=`basename $*`)
@@ -188,11 +190,48 @@ riocCSA3: _scp
 	mv -f $(TMP) $@
 
 prt:
-	tail -n 12 OAR.96613.stderr | sed -e 's/-- +//' -e 's/s.*://' | awk '{if((0+$2) != 0) print 1000.0*$1/$2,$0}'
+	p () { head -n 5 $1.stdout | grep -e node -e make | head -n 2; tail -n 14 $1.stderr | sed -e 's/-- +//' -e 's/s.*://' | grep -v 'last dep' | awk '{if((0+$2) != 0) print 1000.0*$1/$2,$0}'; }
 	id () {for i in $*; do echo -n $i,; lab=`grep -e ",${i}[^0-9]" labels/stop_label.csv | cut -d, -f1`; echo -n $lab,; grep -e "^${lab}," gtfs/stops.txt; done }
 
+%.get3:
+	for dir in London Paris Switzerland; do \
+		scp "$(CLUST):$(CLUST_DIR)/$${dir}/*.$*" $${dir}/ ;\
+	done
+
+%.cp:
+	cp $* /Volumes/files.inria.fr/gang/road/graphs/public_transport/$*
+	scp $* $(CLUST):$(CLUST_DIR)/$*
+
+table_all:
+	grep -e '_avg_time' London/queries-unif.csv.all | sed -e 's/_avg_time//' | cut -d' ' -f1 > $@
+	for dir in London Paris Switzerland; do \
+		for res in queries-unif.csv.all queries-rank.csv.all; do \
+			mv -f $@ $@~;\
+			grep avg_time $${dir}/$${res} | cut -d' ' -f2 | paste -d, $@~ - > $@ ;\
+		done ;\
+	done
+
+CORRECT=| tr . , | awk '{printf "%s %.1f\n", $$1, $$2-prev; prev=$$2;}' | tr , .
+
+table:
+	grep -e '^HL.*_avg_time' London/queries-unif.csv.all | sed -e 's/_avg_time//' | cut -d' ' -f1 > $@
+	for dir in London Paris Switzerland; do \
+		for res in queries-unif.csv.all queries-rank.csv.all; do \
+			mv -f $@ $@~;\
+			grep avg_time $${dir}/$${res} $(CORRECT) | grep -v -e '^HL' | cut -d' ' -f2 | paste -d, $@~ - > $@ ;\
+		done ;\
+		for res in queries-unif.csv.all queries-rank.csv.all; do \
+			mv -f $@ $@~;\
+			grep avg_time $${dir}/$${res} $(CORRECT) | grep -e '^HL' | cut -d' ' -f2 | paste -d, $@~ - > $@ ;\
+		done ;\
+	done
+
+split: table.force
+	cat table | awk -F, '{print $$1; printf "  & %s & %s & %s & %s\n",$$2,$$3,$$4,$$5; printf "  & %s & %s & %s & %s ",$$6,$$7,$$8,$$9; printf "  & %s & %s & %s & %s\\\\\n",$$10,$$11,$$12,$$13;}'
+
+
 %.2hrange:
-	$(eval TMP:=$*_)
+	$(eval TMP:=$(MKTMP))
 	make $(TMP).mkdir
 	$(eval DIR:=`dirname $*`)
 	$(eval QRY:=`basename $*`)
@@ -210,12 +249,6 @@ prt:
 	done
 
 
-
-%.cp:
-	cp $* /Volumes/files.inria.fr/gang/road/graphs/public_transport/$*
-	scp $* $(CLUST):$(CLUST_DIR)/$*
-
-
 # ---------------- queries -------------------
 
 
@@ -229,7 +262,7 @@ prt:
 	$(eval QRY:=`basename $<`)
 	./raptor.o $(DIR) -exit -query-file=$(QRY) -nq=1000 -rank -all-ranks > $@ 
 
-%-unif.csv: %.csv
+%-unif.csv: #%.csv
 	$(eval DIR:=`dirname $<`)
 	$(eval QRY:=`basename $<`)
 	./raptor.o $(DIR) -exit -query-file=$(QRY) -nq=1000 -rerank > $@ 
@@ -311,6 +344,21 @@ getres:
 
 # ------------- manage running ---------------
 
+cpuinfo: hostinfo
+	cat /proc/cpuinfo
+
+%.oarsub:
+	$(eval TMP:=$(shell mktemp -u oarsub.XXXX~))
+	#oarsub -p "host like 'node04%' and not host like 'node040'" -l nodes=1/cpu=2/core=10,walltime=96:00:00 "make $*" | tee $(TMP)
+	oarsub -p "host like 'node06%' and not host like 'node060'" -l nodes=1/cpu=2/core=18,walltime=96:00:00 "make $*" | tee $(TMP)
+	JOBID=`grep OAR_JOB_ID $(TMP) | sed -e 's/.*=//'` ;\
+	sleep 5; echo " --- stdout:"; cat  OAR.$${JOBID}.stdout ;\
+	sleep 10; echo; echo " ---stderr:"; cat  OAR.$${JOBID}.stderr
+	rm $(TMP)
+	echo
+
+%.ssh: _scp
+	ssh $(CLUST) 'cd $(CLUST_DIR); make $*'
 
 %.force:
 	rm -f $*; make $*

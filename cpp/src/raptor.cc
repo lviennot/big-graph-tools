@@ -350,9 +350,17 @@ int main (int argc, char **argv) {
             int log_n_st = 0, rl = ttbl.n_st - 1;
             while (rl > 1) { rl /= 2; ++log_n_st; }
             int log_rnd = std::rand() % (log_n_st + 1);
-            for (int rbase=2, log=1; 2*rbase <= ttbl.n_st; rbase *= 2, ++log){
+            int rbase=2, log=1;
+            // at least 2 min:
+            while (std::get<1>(eat[rbase]) < 120) { rbase *= 2; ++log; }
+            // reachable:
+            int last_reach = (int)ttbl.n_st - 1;
+            while (std::get<1>(eat[last_reach]) >= ttbl.t_max) { --last_reach; }
+            // for all ranks:
+            for ( ; rbase < ttbl.n_st; rbase *= 2, ++log){
                 if (all_ranks || log == log_rnd) {
-                    int r = rbase + (std::rand() % rbase);
+                    int interv_len = std::min(rbase, last_reach - rbase);
+                    int r = rbase + (std::rand() % interv_len);
                     if (rbase <= r_dst && r_dst < 2*rbase) r = r_dst;
                     int st = std::get<0>(eat[r]);
                     int arr = std::get<2>(eat[r]), walk = std::get<1>(eat[r]);
@@ -435,6 +443,12 @@ int main (int argc, char **argv) {
 
     if (has_opt(argc, argv, "-exit")) exit(0);
 
+
+    auto cout_avg_time = [n_q,&t,&main_log](std::string s) {
+        std::cout << s <<"_avg_time "
+                  << (main_log.lap() - t) * 1000.0 / n_q <<"\n";
+    };
+    t = main_log.lap();
     
     
     // go Raptor restricted walk
@@ -451,6 +465,7 @@ int main (int argc, char **argv) {
             ++n_ok;
         }
     }
+    cout_avg_time("Raptor");
     main_log.cerr(t) << n_q << " Raptor queries done, avg_time = "
                      << (sum / n_ok)
                      << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
@@ -473,6 +488,7 @@ int main (int argc, char **argv) {
             ++n_ok;
         }
     }
+    cout_avg_time("HLRaptor");
     main_log.cerr(t) << n_q << " HLRaptor queries done, avg_time = "
                      << (sum / n_ok)
                      << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
@@ -492,6 +508,7 @@ int main (int argc, char **argv) {
             ++n_ok;
         }
     }
+    cout_avg_time("CSA");
     main_log.cerr(t) << n_q << " CSA queries done, avg_time = "
                      << (sum / n_ok)
                      << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
@@ -511,6 +528,7 @@ int main (int argc, char **argv) {
             ++n_ok;
         }
     }
+    cout_avg_time("HLCSA");
     main_log.cerr(t) << n_q << " HLCSA queries done, avg_time = "
                      << (sum / n_ok)
                      << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
@@ -530,6 +548,7 @@ int main (int argc, char **argv) {
             ++n_ok;
         }
     }
+    cout_avg_time("mcRaptor");
     main_log.cerr(t) << n_q << " Pareto Raptor queries done, avg_npaths = "
                      << (sum / n_ok)
                      << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
@@ -549,6 +568,7 @@ int main (int argc, char **argv) {
             ++n_ok;
         }
     }
+    cout_avg_time("HLmcRaptor");
     main_log.cerr(t) << n_q << " Pareto HLRaptor queries done, avg_npaths = "
                      << (sum / n_ok)
                      << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
@@ -574,12 +594,16 @@ int main (int argc, char **argv) {
             ++n_ok;
         }
     }
+    //cout_avg_time("lastdepRaptor");
     main_log.cerr(t) << n_q << " last dep Raptor queries done, avg_dep_time = "
                      << (sum / n_ok)
                      << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
     t = main_log.lap();
+    // */
 
 
+    // int range_2h = has_opt(argc, argv, "-2h-range");
+    for (int range_2h = 1; range_2h != -1; --range_2h) {
     
     // go profile Raptor
     sum = 0, n_ok = 0;
@@ -587,8 +611,8 @@ int main (int argc, char **argv) {
         int src = std::get<0>(q);
         int dst = std::get<1>(q);
         int t = std::get<2>(q);
-        int t_beg = has_opt(argc, argv, "-2h-range") ? t : 0;
-        int t_end = has_opt(argc, argv, "-2h-range") ? t + 7200 : 24 * 3600;
+        int t_beg = range_2h ? t : 0;
+        int t_end = range_2h ? t + 7200 : 24 * 3600;
         std::cout << src <<" "<< dst
                   <<" ["<< t_beg <<","<< t_end <<") : ";
         pset prof = rpt.profile(rev_rpt, src, dst, t_beg, t_end,
@@ -598,47 +622,21 @@ int main (int argc, char **argv) {
         sum += ntrips;
         ++n_ok;
     }
+    cout_avg_time("prRaptor");
     main_log.cerr(t) << n_q << " Profile Raptor queries done, avg_ntrips = "
                      << (sum / n_ok)
                      << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
     t = main_log.lap();
 
     
-    // go profile CSA
-    sum = 0, n_ok = 0;
-    bool prescan = has_opt(argc, argv, "-csa-profile-prescan");
-    int t_get = std::stoi(get_opt(argc, argv, "-t-beg=", "0"));
-    for (auto q : queries) {
-        int src = std::get<0>(q);
-        int dst = std::get<1>(q);
-        int t = std::get<2>(q);
-        int t_beg = has_opt(argc, argv, "-2h-range") ? t : 0;
-        int t_end = has_opt(argc, argv, "-2h-range") ? t + 7200 : 24 * 3600;
-        std::cout << src <<"(="<< ttbl.station_id[src] <<") "
-                  << dst <<"(="<< ttbl.station_id[dst] <<") "
-                  <<" ["<< t_beg <<","<< t_end<<") : ";
-        pset prof = csa.profile(src, dst, t_beg, t_end, false, true, chg,
-                                0, km, prescan);
-        int ntrips = prof.size();
-        std::cout << ntrips <<"\n";
-        sum += ntrips;
-        ++n_ok;
-    }
-    main_log.cerr(t) << n_q << " Profile CSA queries done, avg_ntrips = "
-                     << (sum / n_ok)
-                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
-    t = main_log.lap();
-    // */    
-
-
     // go profile HLRaptor
     sum = 0, n_ok = 0;
     for (auto q : queries) {
         int src = std::get<0>(q);
         int dst = std::get<1>(q);
         int t = std::get<2>(q);
-        int t_beg = has_opt(argc, argv, "-2h-range") ? t : 0;
-        int t_end = has_opt(argc, argv, "-2h-range") ? t + 7200 : 24 * 3600;
+        int t_beg = range_2h ? t : 0;
+        int t_end = range_2h ? t + 7200 : 24 * 3600;
         std::cout << src <<" "<< dst
                   <<" ["<< t_beg <<","<< t_end <<") : ";
         pset prof = rpt.profile(rev_rpt, src, dst, t_beg, t_end,
@@ -651,7 +649,36 @@ int main (int argc, char **argv) {
         sum += ntrips;
         ++n_ok;
     }
+    cout_avg_time("HLprRaptor");
     main_log.cerr(t) << n_q << " Profile HLRaptor queries done, avg_ntrips = "
+                     << (sum / n_ok)
+                     << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
+    t = main_log.lap();
+    // */    
+
+
+    // go profile CSA
+    sum = 0, n_ok = 0;
+    bool prescan = has_opt(argc, argv, "-csa-profile-prescan");
+    int t_get = std::stoi(get_opt(argc, argv, "-t-beg=", "0"));
+    for (auto q : queries) {
+        int src = std::get<0>(q);
+        int dst = std::get<1>(q);
+        int t = std::get<2>(q);
+        int t_beg = range_2h ? t : 0;
+        int t_end = range_2h ? t + 7200 : 24 * 3600;
+        std::cout << src <<"(="<< ttbl.station_id[src] <<") "
+                  << dst <<"(="<< ttbl.station_id[dst] <<") "
+                  <<" ["<< t_beg <<","<< t_end<<") : ";
+        pset prof = csa.profile(src, dst, t_beg, t_end, false, true, chg,
+                                0, km, prescan);
+        int ntrips = prof.size();
+        std::cout << ntrips <<"\n";
+        sum += ntrips;
+        ++n_ok;
+    }
+    cout_avg_time("prCSA");
+    main_log.cerr(t) << n_q << " Profile CSA queries done, avg_ntrips = "
                      << (sum / n_ok)
                      << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
     t = main_log.lap();
@@ -664,8 +691,8 @@ int main (int argc, char **argv) {
         int src = std::get<0>(q);
         int dst = std::get<1>(q);
         int t = std::get<2>(q);
-        int t_beg = has_opt(argc, argv, "-2h-range") ? t : 0;
-        int t_end = has_opt(argc, argv, "-2h-range") ? t + 7200 : 24 * 3600;
+        int t_beg = range_2h ? t : 0;
+        int t_end = range_2h ? t + 7200 : 24 * 3600;
         std::cout << src <<" "<< dst
                   <<" ["<< t_beg <<","<< t_end <<") : ";
         pset prof = csa.profile(src, dst, t_beg, t_end, hub, trf, chg,
@@ -678,11 +705,14 @@ int main (int argc, char **argv) {
         sum += ntrips;
         ++n_ok;
     }
+    cout_avg_time("HLprCSA");
     main_log.cerr(t) << n_q << " Profile HLCSA queries done, avg_ntrips = "
                      << (sum / n_ok)
                      << "  "<< n_ok <<"/"<< queries.size() <<" ok\n";
     t = main_log.lap();
-    // */    
+    // */
+
+    }
 
     // ------------------------ end -------------------------
     main_log.cerr() << "end "<< dir <<"\n";
