@@ -3,6 +3,7 @@
 
 #include <sys/resource.h> // getrusage
 #include <sys/time.h> // gettimeofday
+#include <string.h> // strncmp
 #include <iostream>
 #include <chrono>
 #include <thread>

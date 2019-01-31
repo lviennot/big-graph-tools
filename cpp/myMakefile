@@ -23,7 +23,7 @@ gtfs2graph: src/gtfs2graph.cc $(HDRS)
 test: test.o
 
 %.o: src/%.cc $(HDRS)
-	g++ -std=c++11 -O3 -g -rdynamic -pthread $(LIBS) -o $@ $<
+	g++ -std=c++11 -O3 -pthread $(LIBS) -o $@ $<
 
 headers:
 	@echo $(HDRS)
@@ -190,7 +190,7 @@ MKTMP=$(shell mktemp -u $@.XXXX~)
 	mv -f $(TMP) $@
 
 prt:
-	p () { head -n 5 $1.stdout | grep -e node -e make | head -n 2; tail -n 14 $1.stderr | sed -e 's/-- +//' -e 's/s.*://' | grep -v 'last dep' | awk '{if((0+$2) != 0) print 1000.0*$1/$2,$0}'; }
+	p () { head -n 5 $1.stdout | grep -e node -e make | head -n 2; tail -n 16 $1.stderr | sed -e 's/-- +//' -e 's/s.*://' | grep -v 'last dep' | awk '{if((0+$2) != 0) print 1000.0*$1/$2,$0}'; }
 	id () {for i in $*; do echo -n $i,; lab=`grep -e ",${i}[^0-9]" labels/stop_label.csv | cut -d, -f1`; echo -n $lab,; grep -e "^${lab}," gtfs/stops.txt; done }
 
 %.get3:
@@ -211,7 +211,7 @@ table_all:
 		done ;\
 	done
 
-CORRECT=| tr . , | awk '{printf "%s %.1f\n", $$1, $$2-prev; prev=$$2;}' | tr , .
+CORRECT=| tr . , | awk '{printf "%s %.1f\n", $$1, $$2;}' | tr , .
 
 table:
 	grep -e '^HL.*_avg_time' London/queries-unif.csv.all | sed -e 's/_avg_time//' | cut -d' ' -f1 > $@
@@ -350,7 +350,8 @@ cpuinfo: hostinfo
 %.oarsub:
 	$(eval TMP:=$(shell mktemp -u oarsub.XXXX~))
 	#oarsub -p "host like 'node04%' and not host like 'node040'" -l nodes=1/cpu=2/core=10,walltime=96:00:00 "make $*" | tee $(TMP)
-	oarsub -p "host like 'node06%' and not host like 'node060'" -l nodes=1/cpu=2/core=18,walltime=96:00:00 "make $*" | tee $(TMP)
+	oarsub -p "host like 'node015'" -l nodes=1/cpu=2/core=12,walltime=96:00:00 "make $*" | tee $(TMP)
+	#oarsub -p "host like 'node06%' and not host like 'node060'" -l nodes=1/cpu=2/core=18,walltime=96:00:00 "make $*" | tee $(TMP)
 	JOBID=`grep OAR_JOB_ID $(TMP) | sed -e 's/.*=//'` ;\
 	sleep 5; echo " --- stdout:"; cat  OAR.$${JOBID}.stdout ;\
 	sleep 10; echo; echo " ---stderr:"; cat  OAR.$${JOBID}.stderr

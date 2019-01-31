@@ -23,7 +23,7 @@ gtfs2graph: src/gtfs2graph.cc $(HDRS)
 test: test.o
 
 %.o: src/%.cc $(HDRS)
-	g++ -std=c++11 -O3 -g -rdynamic -pthread $(LIBS) -o $@ $<
+	g++ -std=c++11 -O3 -pthread $(LIBS) -o $@ $<
 
 headers:
 	@echo $(HDRS)
@@ -350,7 +350,8 @@ cpuinfo: hostinfo
 %.oarsub:
 	$(eval TMP:=$(shell mktemp -u oarsub.XXXX~))
 	#oarsub -p "host like 'node04%' and not host like 'node040'" -l nodes=1/cpu=2/core=10,walltime=96:00:00 "make $*" | tee $(TMP)
-	oarsub -p "host like 'node06%' and not host like 'node060'" -l nodes=1/cpu=2/core=18,walltime=96:00:00 "make $*" | tee $(TMP)
+	oarsub -p "host like 'node015'" -l nodes=1/cpu=2/core=12,walltime=96:00:00 "make $*" | tee $(TMP)
+	#oarsub -p "host like 'node06%' and not host like 'node060'" -l nodes=1/cpu=2/core=18,walltime=96:00:00 "make $*" | tee $(TMP)
 	JOBID=`grep OAR_JOB_ID $(TMP) | sed -e 's/.*=//'` ;\
 	sleep 5; echo " --- stdout:"; cat  OAR.$${JOBID}.stdout ;\
 	sleep 10; echo; echo " ---stderr:"; cat  OAR.$${JOBID}.stderr

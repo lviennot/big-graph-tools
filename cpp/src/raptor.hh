@@ -113,6 +113,8 @@ public:
                 T t = trav.dist(ot);
                 if (ot < tt.n_st) {
                     transf.push_back(graph::edge(st, ot, t));
+                    // std::cout << ttbl.station_id[st]
+                    //          <<" "<< ttbl.station_id[ot] <<" "<< t <<"\n";
                 }
             }
         }

@@ -210,17 +210,6 @@ int main (int argc, char **argv) {
         std::cout <<" -------- "<< (hubs ? "HL_" : "") <<"CSA "
                   <<"from "<< src << "=" << ttbl.station_id[src] <<" at "<< t;
         csa.print_journey(dst, hubs, ! hubs, std::cout, chg);
-
-        std::cout <<" walk time "<< rpt.walking_time(7229, 10016) <<"\n";
-        int r = 1616, y = 4;
-        for (int i = 0; i < ttbl.trips_of[r][y].size(); ++i) {
-            int s = ttbl.route_stops[r][i];
-            int st = ttbl.stop_station[s];
-            std::cout <<"     "<< st <<"="<< ttbl.hub_id[st]
-                      <<" (stop "<< s <<" idx="<< i <<") at "
-                      << ttbl.trips_of[r][y][i].first
-                      <<", dep. "<< ttbl.trips_of[r][y][i].second <<"\n";
-        }
     }
 
     //* Arrival times
@@ -232,10 +221,10 @@ int main (int argc, char **argv) {
             int dst = std::get<1>(q);
             int t = std::get<2>(q);
             int arr1 = rpt.earliest_arrival_time(src, dst, t, false, true, chg);
-            int arr2 = csa.earliest_arrival_time(src, dst, t, false, true, chg);
+            int arr2 = csa.earliest_arrival_time_opt(src, dst, t, false, true, chg);
             assert(arr1 == arr2); // can fail if chg == 0
             int arrHL1 = rpt.earliest_arrival_time(src, dst, t, hub, trf, chg);
-            int arrHL2 = csa.earliest_arrival_time(src, dst, t, hub, trf, chg);
+            int arrHL2 = csa.earliest_arrival_time_opt(src, dst, t, hub, trf, chg);
             assert(arrHL1 == arrHL2); // can fail if chg == 0
             std::cout << ttbl.station_id[src] <<","<< ttbl.station_id[dst]
                       <<","<< t <<","<< arr1 <<","<< arrHL1
@@ -500,7 +489,7 @@ int main (int argc, char **argv) {
         int src = std::get<0>(q);
         int dst = std::get<1>(q);
         int t = std::get<2>(q);
-        int arr = csa.earliest_arrival_time(src, dst, t, false, true, chg);
+        int arr = csa.earliest_arrival_time_opt(src, dst, t, false, true, chg);
         //std::cout << arr <<"\n";
         //assert(arr < ttbl.t_max);
         if (arr < ttbl.t_max) {
@@ -521,7 +510,7 @@ int main (int argc, char **argv) {
         int src = std::get<0>(q);
         int dst = std::get<1>(q);
         int t = std::get<2>(q);
-        int arr = csa.earliest_arrival_time(src, dst, t, hub, trf, chg);
+        int arr = csa.earliest_arrival_time_opt(src, dst, t, hub, trf, chg);
         //assert(arr < ttbl.t_max);
         if (arr < ttbl.t_max) {
             sum += arr - t;

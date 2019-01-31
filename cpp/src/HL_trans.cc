@@ -189,8 +189,7 @@ int main (int argc, char **argv) {
         }
         if (u >= n) {
             main_log.cerr() << "closure\n";
-            edg = graph(edg).simple().edges();
-            for (const graph::edge &e : edg) {
+            for (const graph::edge &e : graph(edg).simple().edges()) {
                 std::cout <<"c "<< lab[e.src]<<" "<< lab[e.dst]
                           <<" "<< e.wgt <<"\n";
             }
