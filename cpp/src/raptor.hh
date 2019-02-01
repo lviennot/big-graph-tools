@@ -565,11 +565,12 @@ public:
 
 
     pset profile(raptor &rev_rpt,
-                const ST src, const ST dst, const T t_beg, const T t_end,
-                const bool use_hubs = true,
-                const bool use_transfers = false,
-                const T min_chg = 60, // before
-                const int k_max = ntrips_max) {
+                 const ST src, const ST dst,
+                 const T t_beg, const T t_end, // departure in [t_beg,t_end)
+                 const bool use_hubs = true,
+                 const bool use_transfers = false,
+                 const T min_chg = 60, // before
+                 const int k_max = ntrips_max) {
         
         T _walk_time = ttbl.t_max;
         if (use_transfers) {
@@ -654,7 +655,7 @@ public:
                 walking_is_faster = true;
                 t = arr - walk_time + 1;
             } else {
-                std::cout << dep <<","<< arr <<" ";
+                //std::cout << dep <<","<< arr <<" ";
                 assert(profile.add(arr, - dep)); // later departure is better
                 walking_is_faster = false;
                 t = dep + 1;
@@ -663,7 +664,7 @@ public:
             prev_arr = arr;
         }
 
-        //*
+        /*
         std::cout <<"  src="<< src <<" dst="<< dst
                   <<" walk="<< walk_time
                   <<" wlk="<< n_walk <<" dom="<< n_dom_walk <<"   ";

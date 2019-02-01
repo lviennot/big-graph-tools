@@ -513,7 +513,7 @@ public:
     }
 
     pareto_rev<T> profile(const ST src, const ST dst,
-                const T t_beg, const T t_end,
+                const T t_beg, const T t_end, // departure in [t_beg,t_end)
                 const bool use_hubs = true,
                 const bool use_transfers = false,
                 const T min_chg_bef = 60, const T min_chg_aft = 0,
@@ -525,9 +525,11 @@ public:
         assert(ntr_max <= ntrips_max);
         assert(min_chg_bef > 0 || min_chg_aft > 0); // 0 is problematic with 0 delay connections
 
-        const T t_last_arr = earliest_arrival_time(src, dst, t_end,
-                                 use_hubs, use_transfers, min_chg_bef, ntr_max);
-
+        const T t_last_arr =
+            std::min(earliest_arrival_time(src, dst, t_end,
+                               use_hubs, use_transfers, min_chg_bef, ntr_max),
+                     ttbl.t_max - 1);
+        
         //std::cerr << t_beg <<" "<< t_end <<" "<< t_last_arr <<"\n";
         
         // Regular scan to find reachable trips (30-40ms, HL: 100-300ms):
@@ -624,7 +626,7 @@ public:
                 if (use_transfers) {
                     for(auto e : ttbl.rev_transfers_id[st_from]) {
                         T last_dep = c->dep - min_chg_bef - e.wgt;
-                        if (c_eat <= t_end_arr && t_beg <= last_dep)
+                        if (c_eat <= t_last_arr && t_beg <= last_dep)
                             all_pareto[e.dst].add(c_eat, - last_dep);
                         //if (e.dst == st_from) seen = true;
                     }
@@ -632,7 +634,7 @@ public:
                 if (use_hubs) {
                     for(auto e : ttbl.rev_inhubs_id[st_from]) {
                         T last_dep = c->dep - min_chg_bef - e.wgt;
-                        if (c_eat <= t_end_arr && t_beg <= last_dep)
+                        if (c_eat <= t_last_arr && t_beg <= last_dep)
                             all_pareto[e.dst].add(c_eat, - last_dep);
                         //if (e.dst == st_from) seen = true;
                     }
@@ -670,7 +672,7 @@ public:
                 walk_faster = true;
             } else {
                 src_pareto.add(arr, - dep);
-                std::cout << dep <<","<< arr <<" ";
+                //std::cout << dep <<","<< arr <<" ";
                 walk_faster = false;
             }
         }
