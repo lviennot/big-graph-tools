@@ -7,8 +7,6 @@
 #include <set>
 
 #include "timetable.hh"
-#include "mgraph.hh"
-#include "traversal.hh"
 #include "pareto_rev.hh"
 
 
@@ -49,10 +47,6 @@ private:
     std::vector<int> conn_at; // index of first connection at a given minute
     std::vector<int> conn_at_last; // last connection at a given minute
     
-    // transitively closed transfers:
-    typedef timetable::graph graph;
-    graph transfers, rev_transfers, rev_inhubs;
-
     const int not_stop_index = -1;
     static const int ntrips_max = 48, not_trip_index = -1;
     
@@ -142,34 +136,6 @@ public:
             while (t > conn[i].arr && t >= 0) { conn_at_last[t--] = i; }
             if (t == conn[i].arr && t >= 0) conn_at_last[t--] = i;
         }
-
-        // transitive closure of transfer graph:
-        std::vector<graph::edge> transf;
-        traversal<graph> trav(tt.transfers.n());
-        for (ST st = 0; st < tt.n_st; ++st) {
-            trav.clear();
-            trav.dijkstra(tt.transfers, st);
-            for (int i = 0; i < trav.nvis(); ++i) {
-                ST ot = trav.visit(i);
-                T t = trav.dist(ot);
-                if (ot < tt.n_st) transf.push_back(graph::edge(st, ot, t));
-            }
-        }
-        transfers.set_edges(transf, tt.n_st);
-        size_t asym = transfers.asymmetry(false); 
-        std::cerr << transf.size() <<" transitive transfers: "
-                  << asym << " reverse links miss, "
-                  << transfers.asymmetry(true) <<" reverse weights differ\n";
-        assert(asym <= 100); // strange network otherwise
-
-        rev_inhubs = tt.inhubs.reverse(); // not sorted by weight
-        rev_transfers = transfers.reverse();
-
-        for (ST u : tt.transfers) {
-            for (auto e : tt.transfers[u]) {
-                assert(rev_transfers.edge_weight(e.dst, u) == e.wgt);
-            }
-        }
     }
 
     T earliest_arrival_time(const ST src, const ST dst, const T t_dep,
@@ -228,7 +194,7 @@ public:
         };
         
         if (use_transfers) {
-            for (auto transf : transfers[src]) {
+            for (auto transf : ttbl.transfers[src]) {
                 if (st_eat[src] + transf.wgt < st_eat[transf.dst]) {
                     update_eat(transf.dst, st_eat[src] + transf.wgt,
                                src, src, 0);
@@ -243,7 +209,7 @@ public:
                 update_eat(e.dst, t_dep + e.wgt,
                            src, src, 0);
             }
-            for (auto e : rev_inhubs[dst]) {
+            for (auto e : ttbl.rev_inhubs_id[dst]) {
                 update_eat(dst, st_eat[e.dst] + e.wgt,
                            src, e.dst, 0);
             }
@@ -272,7 +238,7 @@ public:
             bool trip_is_boarded = trip_board[c->trip] != not_stop_index;
             // do we need st_eat[st_from] ?
             if (use_hubs && ! trip_is_boarded) {
-                for (auto f : rev_inhubs[st_from]) {
+                for (auto f : ttbl.rev_inhubs_id[st_from]) {
                     int k = n_trips[f.dst];
                     if (k < ntr_max) {
                         update_eat(st_from, st_eat[f.dst] + f.wgt,
@@ -308,7 +274,7 @@ public:
                                trip_ntrips[c->trip], c->trip);
                     // transfers :
                     if (use_transfers) {
-                        for (auto transf : transfers[st_to]) {
+                        for (auto transf : ttbl.transfers[st_to]) {
                             update_eat(transf.dst, c->arr + transf.wgt,
                                        c->to,
                                        st_to,
@@ -329,7 +295,7 @@ public:
         }
 
         if (use_hubs) {
-            for (auto f : rev_inhubs[dst]) {
+            for (auto f : ttbl.rev_inhubs_id[dst]) {
                 int k = n_trips[f.dst];
                 if (k <= ntrips_max)
                     update_eat(dst, st_eat[f.dst] + f.wgt,
@@ -385,7 +351,7 @@ public:
         };
         
         if (use_transfers) {
-            for (auto transf : transfers[src]) {
+            for (auto transf : ttbl.transfers[src]) {
                 if (st_eat[src] + transf.wgt < st_eat[transf.dst]) {
                     update_eat(transf.dst, st_eat[src] + transf.wgt);
                 }
@@ -398,7 +364,7 @@ public:
                 if (t_dep + e.wgt >= st_eat[dst]) break; // target prun
                 update_eat(e.dst, t_dep + e.wgt);
             }
-            for (auto e : rev_inhubs[dst]) {
+            for (auto e : ttbl.rev_inhubs_id[dst]) {
                 update_eat(dst, st_eat[e.dst] + e.wgt);
             }
             for (auto e : ttbl.outhubs[src]) {
@@ -425,7 +391,7 @@ public:
             bool trip_is_boarded = trip_board[c->trip] != not_stop_index;
             // do we need st_eat[st_from] ?
             if (use_hubs && ! trip_is_boarded) {
-                for (auto f : rev_inhubs[st_from]) {
+                for (auto f : ttbl.rev_inhubs_id[st_from]) {
                     update_eat(st_from, st_eat[f.dst] + f.wgt);
                 }
             }
@@ -437,7 +403,7 @@ public:
                     update_eat(st_to, c->arr);
                     // transfers :
                     if (use_transfers) {
-                        for (auto transf : transfers[st_to]) {
+                        for (auto transf : ttbl.transfers[st_to]) {
                             update_eat(transf.dst, c->arr + transf.wgt);
                         }
                     }
@@ -454,7 +420,7 @@ public:
         }
 
         if (use_hubs) {
-            for (auto f : rev_inhubs[dst]) {
+            for (auto f : ttbl.rev_inhubs_id[dst]) {
                 update_eat(dst, st_eat[f.dst] + f.wgt);
             }
         }
@@ -488,7 +454,7 @@ public:
             // try walk:
             bool walk = false;
             if (use_transfers) {
-                for (auto f : transfers[dst]) {
+                for (auto f : ttbl.transfers[dst]) {
                     if (f.dst == st_par && t - f.wgt > t_par) {
                         walk = true;
                         t_par = t - f.wgt;
@@ -496,7 +462,9 @@ public:
                 }
             }
             if (use_hubs) {
-                for (auto f : rev_inhubs[dst]) { h_eat[f.dst] = t - f.wgt; }
+                for (auto f : ttbl.rev_inhubs_id[dst]) {
+                    h_eat[f.dst] = t - f.wgt;
+                }
                 for (auto e : ttbl.outhubs[st_par]) {
                     if (h_eat[e.dst] != ttbl.t_max
                         && h_eat[e.dst] - e.wgt > t_par) {
@@ -504,7 +472,9 @@ public:
                         t_par = h_eat[e.dst] - e.wgt;
                     }
                 }
-                for (auto f : rev_inhubs[dst]) { h_eat[f.dst] = ttbl.t_max; }
+                for (auto f : ttbl.rev_inhubs_id[dst]) {
+                    h_eat[f.dst] = ttbl.t_max;
+                }
             }
             // try trip:
             bool trip = false;
@@ -578,13 +548,13 @@ public:
         //for (int tr = 0; tr < n_tr; ++tr) { trip_ntrips[tr] = n_tr; }
         
         if (use_transfers) {
-            for (auto e : rev_transfers[dst]) {
+            for (auto e : ttbl.rev_transfers_id[dst]) {
                 wlk_dst[e.dst] = e.wgt;
             }
         }
 
         if (use_hubs) { // need walking time from src anyway
-            for (auto e : rev_inhubs[dst]) {
+            for (auto e : ttbl.rev_inhubs_id[dst]) {
                 wlk_dst[e.dst] = e.wgt;
             }
             for (int st = 0; st < ttbl.n_st; ++st) {
@@ -599,6 +569,7 @@ public:
         }
 
         const T t_end_arr = std::min(t_last_arr, conn.back().arr);
+        //std::cout << "last_arr="<< t_last_arr <<" "<< t_end_arr <<" ";
         assert(conn[conn_at_last[t_end_arr]].arr <= t_end_arr);
         assert(conn_at_last[t_end_arr] == conn.size() - 1
                || conn[conn_at_last[t_end_arr] + 1].arr > t_end_arr);
@@ -610,7 +581,7 @@ public:
              c != conn.crend() ; ++c) {
             ++n_conn;
             if (do_pre_scan && trip_board[c->trip] == not_stop_index) {
-                // trip is not reachable, a lot for Switzerland
+                // trip is not reachable, a lot for Switzerland dataset
                 ++n_conn_skipped;
                 continue;
             }
@@ -630,7 +601,7 @@ public:
             
             // t_ransfer:
             if (use_transfers) {
-                for(auto e : transfers[st_to]) {
+                for(auto e : ttbl.transfers[st_to]) {
                     T t = all_pareto[e.dst].smallest_x_bellow(ttbl.t_max,
                                               - (c->arr + min_chg_aft + e.wgt));
                     if (t < c_eat) c_eat = t;
@@ -651,7 +622,7 @@ public:
                 && ! all_pareto[src].dominates(c_eat, - c->dep - min_chg_bef)) {// source dominat
                 //bool seen =false;
                 if (use_transfers) {
-                    for(auto e : rev_transfers[st_from]) {
+                    for(auto e : ttbl.rev_transfers_id[st_from]) {
                         T last_dep = c->dep - min_chg_bef - e.wgt;
                         if (c_eat <= t_end_arr && t_beg <= last_dep)
                             all_pareto[e.dst].add(c_eat, - last_dep);
@@ -659,7 +630,7 @@ public:
                     }
                 }
                 if (use_hubs) {
-                    for(auto e : rev_inhubs[st_from]) {
+                    for(auto e : ttbl.rev_inhubs_id[st_from]) {
                         T last_dep = c->dep - min_chg_bef - e.wgt;
                         if (c_eat <= t_end_arr && t_beg <= last_dep)
                             all_pareto[e.dst].add(c_eat, - last_dep);
@@ -699,7 +670,7 @@ public:
                 walk_faster = true;
             } else {
                 src_pareto.add(arr, - dep);
-                //std::cout << dep <<","<< arr <<" ";
+                std::cout << dep <<","<< arr <<" ";
                 walk_faster = false;
             }
         }

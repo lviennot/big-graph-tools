@@ -51,7 +51,7 @@ public:
     std::vector<std::vector<T> > stop_arrivals; // arrival time
     std::vector<std::vector<S> > route_stops; // stop sequence of a route
     std::vector<std::vector<std::vector<std::pair<T,T> > > > trips_of; // trips of a route : arrival/departure times at each stop
-    graph transfers, inhubs, outhubs, lowerboundgraph;
+    graph transfers, inhubs, outhubs, lowerboundgraph; // weight sorted
     graph rev_transfers_id, rev_inhubs_id, outhubs_id; // auxiliary graphs
     
     std::map<id, ST> id_to_station, id_to_hub;

@@ -654,7 +654,7 @@ public:
                 walking_is_faster = true;
                 t = arr - walk_time + 1;
             } else {
-                //std::cout << dep <<","<< arr <<" ";
+                std::cout << dep <<","<< arr <<" ";
                 assert(profile.add(arr, - dep)); // later departure is better
                 walking_is_faster = false;
                 t = dep + 1;
@@ -663,7 +663,7 @@ public:
             prev_arr = arr;
         }
 
-        /*
+        //*
         std::cout <<"  src="<< src <<" dst="<< dst
                   <<" walk="<< walk_time
                   <<" wlk="<< n_walk <<" dom="<< n_dom_walk <<"   ";
