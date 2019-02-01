@@ -192,10 +192,11 @@ MKTMP=$(shell mktemp -u $@.XXXX~)
 prt:
 	p () { head -n 5 $1.stdout | grep -e node -e make | head -n 2; tail -n 16 $1.stderr | sed -e 's/-- +//' -e 's/s.*://' | grep -v 'last dep' | awk '{if((0+$2) != 0) print 1000.0*$1/$2,$0}'; }
 	id () {for i in $*; do echo -n $i,; lab=`grep -e ",${i}[^0-9]" labels/stop_label.csv | cut -d, -f1`; echo -n $lab,; grep -e "^${lab}," gtfs/stops.txt; done }
+	cat labels/stop_label.csv | tail -n +2 | awk -F, '{printf "#store#,%s,%s\n", $1,$2}' | cat - gtfs/stops.txt | awk -F, '{if ($1 == "#store#") { nb[$2] = $3+1; } else if (nb[$1]) printf "%s,%d,%s\n", $1, nb[$1]-1, $0;}'
 
 %.get3:
 	for dir in London Paris Switzerland; do \
-		scp "$(CLUST):$(CLUST_DIR)/$${dir}/*.$*" $${dir}/ ;\
+		scp "$(CLUST):$(CLUST_DIR)/$${dir}/*$*" $${dir}/ ;\
 	done
 
 %.cp:

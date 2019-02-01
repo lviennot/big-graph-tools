@@ -15,11 +15,22 @@
 #include <map>
 
 #include "mgraph.hh"
+#include "traversal.hh"
+//#include "pruned_landmark_labeling.hh"
 #include "file_util.hh"
 
+/*******
+ * Data structures for representing timetables and walking transfers of
+ * a public transit network.
+ *
+ * What is usually called a stop in GTFS format is called station here.
+ * A station can have multiple stops, each belonging to exactly one route.
+ * We ensure that all trips in a route have same sequence of stops, and that
+ * a trip never overpass another trip of the same route (this may require
+ * to split some routes in several routes, but rarely in practice).
+ */
+
 class timetable {
-    // a station has several stops, each stop belongs to exactly one route
-    // all trips in a route have same sequence of stops, one trip never overpass another
 public:
     typedef int ST; // stations
     typedef int S; // stops
@@ -41,6 +52,7 @@ public:
     std::vector<std::vector<S> > route_stops; // stop sequence of a route
     std::vector<std::vector<std::vector<std::pair<T,T> > > > trips_of; // trips of a route : arrival/departure times at each stop
     graph transfers, inhubs, outhubs, lowerboundgraph;
+    graph rev_transfers_id, rev_inhubs_id, outhubs_id; // auxiliary graphs
     
     std::map<id, ST> id_to_station, id_to_hub;
 
@@ -61,6 +73,7 @@ public:
         std::cerr << events <<" events\n";
         auto transf = station_transfers(transfersfile);
         build(trip_seq, transf, symmetrize);
+        build_auxiliary_graphs();
     }
 
     timetable(std::string stop_times,
@@ -73,19 +86,8 @@ public:
         std::cerr << events <<" events\n";
         auto transf = station_transfers_2(transfersfile);
         build(trip_seq, transf, symmetrize);
+        build_auxiliary_graphs();
     }
-
-    /*timetable(const timetable &&tt)
-        : n_st(tt.n_st), n_s(tt.n_s), n_r(tt.n_r), n_h(tt.n_h),
-          station_stops(tt.station_stops), station_id(tt.station_id),
-          hub_id(tt.hub_id), stop_station(tt.stop_station),
-          stop_route(tt.stop_route), stop_departures(tt.stop_departures),
-          stop_arrivals(tt.stop_arrivals), route_stops(tt.route_stops),
-          trips_of(tt.trips_of), transfers(tt.transfers), inhubs(tt.inhubs),
-          outhubs(tt.outhubs), lowerboundgraph(tt.lowerboundgraph),
-          id_to_station(tt.id_{
-        
-          }*/
 
     timetable(std::string stop_times,
               std::string inhubsfile, std::string outhubsfile,
@@ -237,6 +239,8 @@ public:
             std::cerr <<"lower-bound graph "<< lowerboundgraph.n()
                       <<" nodes, "<< lowerboundgraph.m() <<" edges\n";
         }
+
+        build_auxiliary_graphs();
     }
 
     // Hack for last departure time requests through EAT query:
@@ -271,6 +275,7 @@ public:
         outhubs = tmpin.reverse();
         outhubs.sort_neighbors_by_weight();
         check();
+        build_auxiliary_graphs();
     }
 
 private:
@@ -508,7 +513,117 @@ private:
 
     }
 
+    
+    void build_auxiliary_graphs() {
+        size_t asym = transfers.asymmetry(false); 
+        std::cerr << transfers.m() <<" transfers: "
+                  << asym << " reverse links miss, "
+                  << transfers.asymmetry(true) <<" reverse weights differ\n";
+        std::cerr <<"  avg degree "<< (1.0*transfers.m()/transfers.n())
+                  <<", max degree "<< transfers.max_degree() <<"\n"; 
+
+        // transitive closure of transfer graph:
+        std::vector<graph::edge> transf;
+        traversal<graph> trav(transfers.n());
+        for (ST st = 0; st < n_st; ++st) {
+            trav.clear();
+            trav.dijkstra(transfers, st);
+            for (int i = 0; i < trav.nvis(); ++i) { // include self loop
+                ST ot = trav.visit(i);
+                T t = trav.dist(ot);
+                if (ot < n_st) {
+                    transf.push_back(graph::edge(st, ot, t));
+                    // std::cout << ttbl.station_id[st]
+                    //          <<" "<< ttbl.station_id[ot] <<" "<< t <<"\n";
+                }
+            }
+        }
+        transfers.set_edges(transf, n_st);
+        asym = transfers.asymmetry(false); 
+        std::cerr << transfers.m() <<" transitive transfers: "
+                  << asym << " reverse links miss, "
+                  << transfers.asymmetry(true) <<" reverse weights differ\n";
+        std::cerr <<"  avg degree "<< (1.0*transfers.m()/transfers.n())
+                  <<", max degree "<< transfers.max_degree() <<"\n"; 
+        assert(asym <= 100); // strange network otherwise
+
+        rev_transfers_id = transfers.reverse(); // sort by ID
+
+        if (outhubs.n() > 0 || inhubs.n() > 0) {
+            rev_inhubs_id = inhubs.reverse(); // sorted by ID, not weight
+            std::cerr <<"rev_inhubs avg degree "
+                      <<(1.0*rev_inhubs_id.m()/rev_inhubs_id.n())
+                      <<", max degree "<< rev_inhubs_id.max_degree() <<"\n";
+            
+            // Check hub distances vs transfers
+            outhubs_id = outhubs.reverse().reverse(); // ID sorted
+            
+            for (auto u : transfers) {
+                for (auto e : transfers[u]) {
+                    T t = walking_time(u, e.dst);
+                    //std::cerr << ttbl.hub_id[u] <<" -> "<< ttbl.hub_id[e.dst]
+                    //          <<": "<< t <<","<< e.wgt <<"\n";
+                    assert(t <= e.wgt);
+                }
+            }
+        }
+
+
+        // ---------------- lower bound graph ---------------------        
+        //pll_lb(tt.lowerboundgraph)
+        //pll_lb.print_stats(std::cerr);
+    }
+
 public:
+    
+    T walking_time(ST u, ST v) const {
+        assert(u < n_st && v < n_st);
+        auto uh = outhubs_id[u].begin();
+        auto ue = outhubs_id[u].end();
+        auto hv = rev_inhubs_id[v].begin();
+        auto ve = rev_inhubs_id[v].end();
+        T t = t_max;
+        while (uh != ue && hv != ve) {
+            if (uh->dst < hv->dst) { ++uh; }
+            else if (uh->dst > hv->dst) { ++hv; }
+            else { // uh->dst == hv-->dst
+                T t_uhv = uh->wgt + hv->wgt;
+                if (t_uhv <t) t = t_uhv;
+                ++uh; ++hv;
+            }
+        }
+        return t;
+    }
+    
+    std::string walking_time_str(ST u, ST v) const {
+        T t = t_max;
+        ST best_hub = -1;
+        if (u >= n_st) {
+            t = rev_inhubs_id.edge_weight(v, u);
+            best_hub = u;
+        } else if (v >= n_st) {
+            t = outhubs_id.edge_weight(u, v);
+            best_hub = v;
+        } else {
+            auto uh = outhubs_id[u].begin();
+            auto ue = outhubs_id[u].end();
+            auto hv = rev_inhubs_id[v].begin();
+            auto ve = rev_inhubs_id[v].end();
+            while (uh != ue && hv != ve) {
+                if (uh->dst < hv->dst) { ++uh; }
+                else if (uh->dst > hv->dst) { ++hv; }
+                else { // uh->dst == hv-->dst
+                    T t_uhv = uh->wgt + hv->wgt;
+                    if (t_uhv <t) { t = t_uhv; best_hub = uh->dst; }
+                    ++uh; ++hv;
+                }
+            }
+        }
+        if (t == t_max) return std::string("infinity");
+        return std::to_string(t) + " (hub=" + std::to_string(best_hub) +")";
+    }
+    
+
     void check() {
         assert(station_stops.size() == n_st);
         assert(stop_station.size() == n_s);

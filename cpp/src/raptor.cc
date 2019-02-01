@@ -228,7 +228,7 @@ int main (int argc, char **argv) {
             assert(arrHL1 == arrHL2); // can fail if chg == 0
             std::cout << ttbl.station_id[src] <<","<< ttbl.station_id[dst]
                       <<","<< t <<","<< arr1 <<","<< arrHL1
-                      <<","<< (t + rpt.walking_time(src, dst)) <<"\n";
+                      <<","<< (t + ttbl.walking_time(src, dst)) <<"\n";
             std::cout.flush();
             ++n_ok;
         }
@@ -265,7 +265,7 @@ int main (int argc, char **argv) {
             std::vector<std::tuple<int, int, int> > eat(ttbl.n_st);
             for (int i = 0; i < ttbl.n_st; ++i) {
                 eat[i] = std::make_tuple(i, rpt.eat_to(i),
-                                         rpt.walking_time(src, i)) ;
+                                         ttbl.walking_time(src, i)) ;
             }
             std::sort(eat.begin(), eat.end(),
                       [](const std::tuple<int, int, int>&a,
@@ -309,7 +309,7 @@ int main (int argc, char **argv) {
             int nvis = rpt.eat_one_to_all(src, t, ! trf, trf, chg);
             std::vector<std::tuple<int, int, int> > eat(ttbl.n_st);
             for (int i = 0; i < ttbl.n_st; ++i) {
-                eat[i] = std::make_tuple(i, rpt.walking_time(src, i),
+                eat[i] = std::make_tuple(i, ttbl.walking_time(src, i),
                                          rpt.eat_to(i));
             }
             std::sort(eat.begin(), eat.end(),
@@ -388,7 +388,7 @@ int main (int argc, char **argv) {
                 t = preserve_time ? t_req : std::rand() % (24*3600);
                 nvis = rpt.eat_one_to_all(src, t, hubs, ! hubs, chg);
                 for (int i = 0; i < ttbl.n_st; ++i) {
-                    eat[i] = std::make_tuple(i, rpt.walking_time(src, i));
+                    eat[i] = std::make_tuple(i, ttbl.walking_time(src, i));
                 }
                 std::sort(eat.begin(), eat.end(),
                           [src](const std::tuple<int, int>&a,

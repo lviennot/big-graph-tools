@@ -7,13 +7,8 @@
 #include <set>
 
 #include "timetable.hh"
-#include "traversal.hh"
 #include "connection_scan.hh"
 #include "pareto_rev.hh"
-
-#include "mgraph.hh"
-#include "traversal.hh"
-#include "pruned_landmark_labeling.hh"
 
 
 class raptor {
@@ -65,13 +60,6 @@ private:
     std::vector<R> improved_routes;
     std::vector<int> route_has_improved_from, route_has_improved_to;
 
-    // transitively closed transfers:
-    typedef timetable::graph graph;
-    graph transfers, rev_transfers, rev_inhubs, outhubs; // ID sorted hubs
-    //pruned_landmark_labeling<graph> pll_lb;
-
-    std::vector<T> hub_to_dst; // to compute distances
-
 
 public:
     raptor(const timetable &tt)
@@ -86,9 +74,7 @@ public:
           hub_has_improved(tt.n_h, false),
           stop_has_improved(tt.n_s, false),
           route_has_improved_from(tt.n_r),
-          route_has_improved_to(tt.n_r),
-          hub_to_dst(tt.n_h, tt.t_max)
-          //pll_lb(tt.lowerboundgraph)
+          route_has_improved_to(tt.n_r)
     {
         for (R r = 0; r < ttbl.n_r; ++r) {
             route_has_improved_from[r] = not_stop_index;
@@ -101,133 +87,6 @@ public:
         for (int i = 0; i <= ntrips_max; ++i) {
             parent.push_back(std::vector<parent_t>(tt.n_h));
         }
-
-        // transitive closure of transfer graph:
-        std::vector<graph::edge> transf;
-        traversal<graph> trav(tt.transfers.n());
-        for (ST st = 0; st < tt.n_st; ++st) {
-            trav.clear();
-            trav.dijkstra(tt.transfers, st);
-            for (int i = 0; i < trav.nvis(); ++i) { // include self loop
-                ST ot = trav.visit(i);
-                T t = trav.dist(ot);
-                if (ot < tt.n_st) {
-                    transf.push_back(graph::edge(st, ot, t));
-                    // std::cout << ttbl.station_id[st]
-                    //          <<" "<< ttbl.station_id[ot] <<" "<< t <<"\n";
-                }
-            }
-        }
-        transfers.set_edges(transf, tt.n_st);
-        size_t asym = transfers.asymmetry(false); 
-        std::cerr << transf.size() <<" transitive transfers: "
-                  << asym << " reverse links miss, "
-                  << transfers.asymmetry(true) <<" reverse weights differ\n";
-        std::cerr <<"  avg degree "<< (1.0*transfers.m()/transfers.n())
-                  <<", max degree "<< transfers.max_degree() <<"\n"; 
-        assert(asym <= 100); // strange network otherwise
-
-        rev_transfers = transfers.reverse(); // sort by ID
-        
-        rev_inhubs = tt.inhubs.reverse(); // sorted by ID, not weight
-        std::cerr <<"rev_inhubs avg degree "
-                  <<(1.0*rev_inhubs.m()/rev_inhubs.n())
-                  <<", max degree "<< rev_inhubs.max_degree() <<"\n";
-        
-        // Check hub distances vs transfers
-        outhubs = tt.outhubs.reverse().reverse(); // ID sorted
-
-        /* Check some distances:
-        ST u = 6279, v = 24102, w = 6277, x = 12197;
-        auto pr_dist = [this](ST u, ST v) { 
-            std::cerr <<" dist "<< u <<" "<< v <<" = "
-                      << walking_time(u, v) <<"\n";
-        };
-        pr_dist(u, v);
-        pr_dist(v, w);
-        pr_dist(w, x);
-        pr_dist(u, w);
-        pr_dist(v, x);
-        pr_dist(u, x);
-        */
-        
-        for (auto u : transfers) {
-            for (auto e : transfers[u]) {
-                T t = walking_time(u, e.dst);
-                //std::cerr << ttbl.hub_id[u] <<" -> "<< ttbl.hub_id[e.dst]
-                //          <<": "<< t <<","<< e.wgt <<"\n";
-                assert(t == walking_time_2(u, e.dst));
-                assert(t <= e.wgt);
-            }
-        }
-
-
-        // ---------------- lower bound graph ---------------------        
-        //pll_lb.print_stats(std::cerr);
-        
-    }
-
-    T walking_time(ST u, ST v) {
-        assert(u < ttbl.n_st && v < ttbl.n_st);
-        auto uh = outhubs[u].begin();
-        auto ue = outhubs[u].end();
-        auto hv = rev_inhubs[v].begin();
-        auto ve = rev_inhubs[v].end();
-        T t = ttbl.t_max;
-        while (uh != ue && hv != ve) {
-            if (uh->dst < hv->dst) { ++uh; }
-            else if (uh->dst > hv->dst) { ++hv; }
-            else { // uh->dst == hv-->dst
-                T t_uhv = uh->wgt + hv->wgt;
-                if (t_uhv <t) t = t_uhv;
-                ++uh; ++hv;
-            }
-        }
-        return t;
-    }
-    
-    std::string walking_time_str(ST u, ST v) {
-        T t = ttbl.t_max;
-        ST best_hub = -1;
-        if (u >= ttbl.n_st) {
-            t = rev_inhubs.edge_weight(v, u);
-            best_hub = u;
-        } else if (v >= ttbl.n_st) {
-            t = outhubs.edge_weight(u, v);
-            best_hub = v;
-        } else {
-            auto uh = outhubs[u].begin();
-            auto ue = outhubs[u].end();
-            auto hv = rev_inhubs[v].begin();
-            auto ve = rev_inhubs[v].end();
-            while (uh != ue && hv != ve) {
-                if (uh->dst < hv->dst) { ++uh; }
-                else if (uh->dst > hv->dst) { ++hv; }
-                else { // uh->dst == hv-->dst
-                    T t_uhv = uh->wgt + hv->wgt;
-                    if (t_uhv <t) { t = t_uhv; best_hub = uh->dst; }
-                    ++uh; ++hv;
-                }
-            }
-        }
-        if (t == ttbl.t_max) return std::string("infinity");
-        return std::to_string(t) + " (hub=" + std::to_string(best_hub) +")";
-    }
-    
-    T walking_time_2(ST src, ST dst) {
-        for (auto e : rev_inhubs[dst]) {
-            hub_to_dst[e.dst] = e.wgt;
-        }
-        T w = ttbl.t_max;
-        for (auto f : ttbl.outhubs[src]) {
-            if (f.wgt >= w) break;
-            T shd = f.wgt + hub_to_dst[f.dst];
-            if (shd < w) w = shd;
-        }
-        for (auto e : rev_inhubs[dst]) {
-            hub_to_dst[e.dst] = ttbl.t_max;
-        }
-        return w;
     }
 
     bool update_eat_trip(ST st, T t, T dt, S par, int k) {
@@ -327,7 +186,7 @@ public:
         reach_station_walk(src, t_dep, 0, not_stop_index, 0);
 
         if (use_transfers) {
-            for (auto f : transfers[src]) {
+            for (auto f : ttbl.transfers[src]) {
                 reach_station_walk(f.dst, t_dep + f.wgt, f.wgt, src, 0);
             }
         }
@@ -345,7 +204,7 @@ public:
                 if (t_dep + e.wgt >= st_eat[dst]) break; // target prun
                 reach_station_walk(e.dst, t_dep + e.wgt, e.wgt, src, 0);
             }
-            if (dst < ttbl.n_st) for (auto e : rev_inhubs[dst]) {
+            if (dst < ttbl.n_st) for (auto e : ttbl.rev_inhubs_id[dst]) {
                 reach_station_walk(dst, st_eat[e.dst] + e.wgt, e.wgt, e.dst, 0);
             }
             for (auto e : ttbl.outhubs[src]) {
@@ -443,7 +302,7 @@ public:
             if (use_transfers) {
                 // Assumes transfer graph is transitively closed.
                 for (ST st : improved_stations) {
-                    for (auto e : transfers[st]) { 
+                    for (auto e : ttbl.transfers[st]) { 
                         T t = st_eat[st] + e.wgt;
                         if (t >= st_eat[dst]) break; // targpr
                         reach_station_walk(e.dst, t, e.wgt, st, k,
@@ -489,26 +348,6 @@ public:
 
         }
 
-        if (false && use_hubs) {
-            for (auto e : rev_inhubs[dst]) {
-                hub_to_dst[e.dst] = e.wgt;
-            }
-            T t;
-            for (int i = 0; i < ttbl.n_st; ++i) {
-                if (st_eat[i] < st_eat[dst]) {
-                    for (auto f : ttbl.outhubs[i]) {
-                        if (st_eat[i] + f.wgt >= st_eat[dst])
-                            break; // target prun
-                        t = f.wgt + hub_to_dst[f.dst];
-                        update_eat_walk(dst, st_eat[i] + t, t, i, n_trips[i]);
-                    }
-                }
-            }
-            for (auto e : rev_inhubs[dst]) {
-                hub_to_dst[e.dst] = ttbl.t_max;
-            }
-        }
-
         if (k > k_max) {
             for (const R r : improved_routes) {
                 const std::vector<S> &stops = ttbl.route_stops[r];
@@ -524,31 +363,6 @@ public:
                 station_has_improved[st] = false;
             }
             improved_stations.clear();
-        }
-
-        if (false && st_eat[dst] < ttbl.t_max && use_hubs) {
-            std::cout<< n_trips[dst]
-                     <<" trips from "<< src <<"="<< ttbl.station_id[src]
-                     <<" at "<< t_dep
-                     <<" to "<< dst <<"="<< ttbl.station_id[dst]
-                     <<" :\n";
-            print_journey(dst);
-            print_longest_transfer(src, t_dep, dst, n_trips[dst]);
-            std::cout <<"------------\n";
-        }
-
-        if (false && use_hubs) {
-            // some random destinations :
-            for (int n = 0, fnd = 0; n < 1000 && fnd < 100; ++n) {
-                ST i = rand() % ttbl.n_st;
-                if (st_eat[i] < ttbl.t_max && st_eat[i] <= st_eat[dst]
-                    && n_trips[i] > 1) {
-                    ++fnd;
-                    print_journey(i);
-                    print_longest_transfer(src, t_dep, i, n_trips[i]);
-                    std::cout <<"------------\n";
-                }
-            }
         }
 
         if (at_least_one_trip && st_eat[dst] < ttbl.t_max) {
@@ -661,11 +475,11 @@ public:
                  <<" to "<< dst <<"="<< ttbl.hub_id[dst]
                  <<" at "<< par.eat <<"<="<< st_eat[dst] 
                  <<" ("<< par.dist
-                 <<"s>="<< walking_time_str(par_st, dst) <<")\n";
+                 <<"s>="<< ttbl.walking_time_str(par_st, dst) <<")\n";
             /* Check walking time, only with use_hubs:
             assert(par.dist == // chg_time_aft excet for walk from root
                    (parent[k][par_st].stop == not_stop_index ? min_chg_aft : 0)
-                   + walking_time(par_st, dst));
+                   + ttbl.walking_time(par_st, dst));
             */
             assert(par_eat + par.dist == par.eat);
             // */
@@ -735,7 +549,7 @@ public:
                 T wlk = par.dist;
                 ST s = par_st, d = prev_is_walk ? prev_dst : dst;
                 if (( ! last) && parent[par_k][s].trip
-                              && ! rev_transfers.has_edge(d, s)) {
+                              && ! ttbl.rev_transfers_id.has_edge(d, s)) {
                     cout <<"missing_transfer "<< ttbl.station_id[s]
                          <<" "<< ttbl.station_id[d]
                          <<" "<< (prev_is_walk ? wlk + prev_wlk : wlk) <<"\n";
@@ -759,12 +573,12 @@ public:
         
         T _walk_time = ttbl.t_max;
         if (use_transfers) {
-            for (auto e : transfers[src]) {
+            for (auto e : ttbl.transfers[src]) {
                 if (e.dst == dst) _walk_time = e.wgt; 
             }
         }
         if (use_hubs) {
-            _walk_time = walking_time(src, dst);
+            _walk_time = ttbl.walking_time(src, dst);
         }
         const T walk_time = _walk_time;
         
@@ -922,7 +736,7 @@ public:
         reach_station_walk(src, t_dep, 0);
 
         if (use_transfers) {
-            for (auto f : transfers[src]) {
+            for (auto f : ttbl.transfers[src]) {
                 reach_station_walk(f.dst, t_dep + f.wgt, f.wgt);
             }
         }
@@ -930,7 +744,7 @@ public:
             for (auto e : ttbl.outhubs[src]) {
                 incr_pareto[e.dst].add(t_dep + e.wgt, e.wgt);
             }
-            for (auto f : rev_inhubs[dst]) {
+            for (auto f : ttbl.rev_inhubs_id[dst]) {
                 assert(incr_pareto[f.dst].pts.size() <= 1);
                 for (auto p : incr_pareto[f.dst].pts) {
                     all_pareto[dst].add(p.x+f.wgt, p.y+f.wgt);
@@ -1044,7 +858,7 @@ public:
                 for (ST st : improved_stations) {
                     for (auto p : incr_pareto[st].pts) {
                         reach_station_walk(st, p.x, p.y, true);
-                        for (auto f : transfers[st]) {
+                        for (auto f : ttbl.transfers[st]) {
                             if (f.dst != st) {
                                 reach_station_walk(f.dst, p.x+f.wgt, p.y+f.wgt);
                             }

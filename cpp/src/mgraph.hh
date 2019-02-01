@@ -82,7 +82,7 @@ public:
     V degree(V u) const { return (int) sdeg[u+1] - sdeg[u]; }
 
     V max_degree() const {
-        assert(n_ > 0);
+        if (n_ <= 0) return 0;
         V d = degree(0);
         for (V u = 1; u < n_; ++u) {
             V du = degree(u);
@@ -94,7 +94,7 @@ public:
     size_t degree_sum(V u) const { return sdeg[u]; }
     
     // asserts sorted adjacency lists (use g.reverse() or g.reverse().reverse())
-    bool has_edge(V u, V v) {
+    bool has_edge(V u, V v) const {
         size_t e1 = sdeg[u], e2 = sdeg[u+1];
         // is v in adj[e1 .. e2-1] ?
         while (e1 < e2) {
@@ -108,7 +108,7 @@ public:
     }
 
     // asserts sorted adjacency lists (use g.reverse() or g.reverse().reverse())
-    W edge_weight(V u, V v) {
+    W edge_weight(V u, V v) const {
         size_t e1 = sdeg[u], e2 = sdeg[u+1];
         // is v in adj[e1 .. e2-1] ?
         while (e1 < e2) {
