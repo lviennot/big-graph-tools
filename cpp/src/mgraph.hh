@@ -243,7 +243,7 @@ public:
     int_iterator<V> end() const { return int_iterator<V>(n_); }
 
     const mgraph& nodes() const { return *this; }
-    range<V> nodes_rev() const { return range<V>(n_ - 1, 0 - 1, false); }
+    range_rev<V> nodes_rev() const { return range_rev<V>(n_, 0); }
 
     
     class neighborhood {
