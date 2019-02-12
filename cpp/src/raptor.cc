@@ -94,7 +94,7 @@ int main (int argc, char **argv) {
     */
     timetable ttbl{dir+"stop_times.csv.gz",
             dir+"in_hubs.gr.gz", dir+"out_hubs.gr.gz",
-            dir+"transfers.csv", true};
+            dir+"transfers.csv.gz", true};
     //dir+"walking_and_transfers.gr", t_from, t_to};
     std::cerr << ttbl.n_r <<" routes, "<< ttbl.n_st <<" sations, "
               << ttbl.n_s <<" stops\n";
@@ -524,6 +524,8 @@ int main (int argc, char **argv) {
     t = main_log.lap();
 
     
+    if (has_opt(argc, argv, "-exit-after-csa")) exit(0);
+
     
     //* go Pareto
     sum = 0, n_ok = 0;

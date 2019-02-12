@@ -240,6 +240,7 @@ public:
             if (use_hubs && ! trip_is_boarded) {
                 for (auto f : ttbl.rev_inhubs_id[st_from]) {
                     int k = n_trips[f.dst];
+                    if (t_dep + f.wgt > st_eat[st_from]) break; // local pruning
                     if (k < ntr_max) {
                         update_eat(st_from, st_eat[f.dst] + f.wgt,
                                    (f.dst >= ttbl.n_st ? parent[k][f.dst].first
@@ -331,6 +332,7 @@ public:
         int i_end = use_hubs ? ttbl.n_h : ttbl.n_st;
         for (int i = 0; i < i_end; ++i) { st_eat[i] = ttbl.t_max; }
         for (int tr = 0; tr < n_tr; ++tr) { trip_board[tr] = not_stop_index; }
+        //for (int i = 0; i < ttbl.n_h; ++i) { wlk_dst[i] = ttbl.t_max; }
         //scanned_trips.clear();
 
         /* Track for debug :
@@ -347,6 +349,11 @@ public:
         auto update_eat = [this](ST st, T t) {
             if (t < st_eat[st]) {
                 st_eat[st] = t;
+                /* dest arrival update: slow down
+                if (wlk_dst[st] < ttbl.t_max && t + wlk_dst[st] < st_eat[dst]) {
+                    st_eat[dst] = t + wlk_dst[st];
+                }
+                // */
             }
         };
         
@@ -365,6 +372,7 @@ public:
                 update_eat(e.dst, t_dep + e.wgt);
             }
             for (auto e : ttbl.rev_inhubs_id[dst]) {
+                wlk_dst[e.dst] = e.wgt;
                 update_eat(dst, st_eat[e.dst] + e.wgt);
             }
             for (auto e : ttbl.outhubs[src]) {
@@ -391,7 +399,8 @@ public:
             bool trip_is_boarded = trip_board[c->trip] != not_stop_index;
             // do we need st_eat[st_from] ?
             if (use_hubs && ! trip_is_boarded) {
-                for (auto f : ttbl.rev_inhubs_id[st_from]) {
+                for (auto f : ttbl.rev_inhubs[st_from]) {
+                    //if (t_dep + f.wgt > st_eat[st_from]) break; // local pruning: slight slowdown in general, beneficial on Paris+Unif
                     update_eat(st_from, st_eat[f.dst] + f.wgt);
                 }
             }

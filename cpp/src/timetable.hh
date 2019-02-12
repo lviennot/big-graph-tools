@@ -51,7 +51,7 @@ public:
     std::vector<std::vector<T> > stop_arrivals; // arrival time
     std::vector<std::vector<S> > route_stops; // stop sequence of a route
     std::vector<std::vector<std::vector<std::pair<T,T> > > > trips_of; // trips of a route : arrival/departure times at each stop
-    graph transfers, inhubs, outhubs, lowerboundgraph; // weight sorted
+    graph transfers, inhubs, rev_inhubs, outhubs, lowerboundgraph; // weight sorted
     graph rev_transfers_id, rev_inhubs_id, outhubs_id; // auxiliary graphs
     
     std::map<id, ST> id_to_station, id_to_hub;
@@ -487,12 +487,9 @@ private:
                 for (auto e : r[u]) {
                     if ( ! r.has_edge(e.dst, u)) {
                         st_transf.push_back(graph::edge(u, e.dst, e.wgt));
-                        //std::cout << station_id[u] <<","<< station_id[e.dst]
-                        //          <<","<< e.wgt <<"\n";
                     }
                 }
             }
-            std::cout.flush();
             transfers.set_edges(st_transf, n_st + n_tr);
         }
         //transfers = transfers.simple();
@@ -525,6 +522,7 @@ private:
         // transitive closure of transfer graph:
         std::vector<graph::edge> transf;
         traversal<graph> trav(transfers.n());
+        //std::cout << "from_stop_id,to_stop_id,min_transfer_time\n";
         for (ST st = 0; st < n_st; ++st) {
             trav.clear();
             trav.dijkstra(transfers, st);
@@ -533,8 +531,7 @@ private:
                 T t = trav.dist(ot);
                 if (ot < n_st) {
                     transf.push_back(graph::edge(st, ot, t));
-                    // std::cout << ttbl.station_id[st]
-                    //          <<" "<< ttbl.station_id[ot] <<" "<< t <<"\n";
+                    //std::cout << station_id[st] <<","<< station_id[ot] <<","<< t <<"\n";
                 }
             }
         }
@@ -554,6 +551,9 @@ private:
             std::cerr <<"rev_inhubs avg degree "
                       <<(1.0*rev_inhubs_id.m()/rev_inhubs_id.n())
                       <<", max degree "<< rev_inhubs_id.max_degree() <<"\n";
+
+            rev_inhubs = rev_inhubs_id;
+            rev_inhubs.sort_neighbors_by_weight();
             
             // Check hub distances vs transfers
             outhubs_id = outhubs.reverse().reverse(); // ID sorted

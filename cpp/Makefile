@@ -192,7 +192,12 @@ MKTMP=$(shell mktemp -u $@.XXXX~)
 prt:
 	p () { head -n 5 $1.stdout | grep -e node -e make | head -n 2; tail -n 16 $1.stderr | sed -e 's/-- +//' -e 's/s.*://' | grep -v 'last dep' | awk '{if((0+$2) != 0) print 1000.0*$1/$2,$0}'; }
 	id () {for i in $*; do echo -n $i,; lab=`grep -e ",${i}[^0-9]" labels/stop_label.csv | cut -d, -f1`; echo -n $lab,; grep -e "^${lab}," gtfs/stops.txt; done }
-	cat labels/stop_label.csv | tail -n +2 | awk -F, '{printf "#store#,%s,%s\n", $1,$2}' | cat - gtfs/stops.txt | awk -F, '{if ($1 == "#store#") { nb[$2] = $3+1; } else if (nb[$1]) printf "%s,%d,%s\n", $1, nb[$1]-1, $0;}'
+	gunzip -c stop_times.csv.gz | tail -n +2 | cut -d, -f 4 | sort -n -u  | awk '{printf "#seen#,%s,%s\n", $1,$2}' > /tmp/seen
+	cat labels/transfer_nodes.csv | tail -n +2 | awk -F, '{printf "#close#,%s,%s\n",$1,$2}' > /tmp/close
+	cat labels/stop_label.csv | tail -n +2 | awk -F, '{printf "#store#,%s,%s\n", $1,$2}' | cat - gtfs/stops.txt | awk -F, '{ if ($1 == "#store#") { nb[$2] = $3+1; } else if (nb[$1]) printf "%s,%d,%s\n", $1, nb[$1]-1, $0; }'
+	cat gtfs/stops.txt | tail -n +2 | awk -F, '{printf "#gtfs#,%s\n", $0}' > /tmp/gtfs
+	cat labels/stop_label.csv | tail -n +2 | awk -F, '{printf "#lab#,%s\n", $0}' > /tmp/lab
+	cat /tmp/gtfs /tmp/close /tmp/lab | awk -F, '{ if ($1 == "#gtfs#") gtfs[$2]=$0; else if ($1 == "#close#") { clos[$2] = $3; } else if ($1 == "#lab#") lab[$3+0]=$2; } END { for (l in lab) if (gtfs[lab[l]]) printf "%d,%s\n", l, gtfs[lab[l]]; else printf "%d,%s\n", l, gtfs[lab[clos[l]]]; }' | sed -e 's/#gtfs#,//' | awk -F, '{m=1000.0*1000.0; printf "v %d %d %d\n", $1, m*$7, m*$6}' > /tmp/w.co
 
 %.get3:
 	for dir in London Paris Switzerland; do \
@@ -301,7 +306,16 @@ getres:
 %.delay: %
 	tail -n +2 $< | awk -F, '{if($$4 < 100000000) print $$1, $$2, $$3, $$5, $$5, $$6, 100.*($$4-$$5)/($$5-$$3)}' | sort -n -k 7 > $@
 
+%.all.gain_day: %.all
+	tail -n +2 $< | awk -F, '{if($$4 < 100000000 && $$3 >= 6 * 3600 && $$4 < 20 * 3600) print $$1, $$2, $$3, $$4, $$5, $$6, 100.*($$4-$$5)/($$4-$$3)}' | sort -n -k 7 > $@
 
+%.all.gain: %.all
+	nlines=`make -s $*.nlines`; echo $$nlines lines; \
+	head -n $$nlines $< | tail -n +2 | awk -F, '{if($$4 < 100000000) print $$1, $$2, $$3, $$4, $$5, $$6, 100.*($$4-$$5)/($$4-$$3)}' | sort -n -k 7 > $@
+
+%.avg_med:
+	make -s $*.min_moy_max
+	make -s $*.median
 
 %.mkdir:
 	@d=`dirname $*` ;\
@@ -328,7 +342,7 @@ getres:
 
 %.median: %
 	nlines=`make -s $*.nlines`; echo $$nlines lines; \
-	head -n $$(( $$nlines / 2 )) $* | tail
+	head -n $$(( $$nlines / 2 )) $* | tail -n 1
 
 %.min_moy_max: %
 	cat $* | grep -e '^#' | head -n 2 ;\
@@ -350,8 +364,8 @@ cpuinfo: hostinfo
 
 %.oarsub:
 	$(eval TMP:=$(shell mktemp -u oarsub.XXXX~))
-	#oarsub -p "host like 'node04%' and not host like 'node040'" -l nodes=1/cpu=2/core=10,walltime=96:00:00 "make $*" | tee $(TMP)
-	oarsub -p "host like 'node015'" -l nodes=1/cpu=2/core=12,walltime=96:00:00 "make $*" | tee $(TMP)
+	oarsub -p "host like 'node04%' and not host like 'node040'" -l nodes=1/cpu=2/core=10,walltime=96:00:00 "make $*" | tee $(TMP)
+	#oarsub -p "host like 'node015'" -l nodes=1/cpu=2/core=12,walltime=96:00:00 "make $*" | tee $(TMP)
 	#oarsub -p "host like 'node06%' and not host like 'node060'" -l nodes=1/cpu=2/core=18,walltime=96:00:00 "make $*" | tee $(TMP)
 	JOBID=`grep OAR_JOB_ID $(TMP) | sed -e 's/.*=//'` ;\
 	sleep 5; echo " --- stdout:"; cat  OAR.$${JOBID}.stdout ;\
