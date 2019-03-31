@@ -15,19 +15,32 @@ template<typename G,
          int64_t max_weight = INT64_MAX, int64_t zero_weight = 0>
 class pruned_landmark_labeling {
 
-private:
+public:
     typedef typename G::vertex V;
+
+    struct hubinfo {
+        WL dist;
+        V next_hop;
+        hubinfo(WL d, V nh) : dist(d), next_hop(nh) {}
+        hubinfo() : dist(INT64_MAX), next_hop(-1) {}
+    };
+
+    typedef typename edge::src_dst_wgt<V, hubinfo> edgeL;
+
+private:
     typedef typename G::weight W;
-    typedef typename edge::src_dst_wgt<V, WL> edgeL;
     typedef typename edge::src_dst_wgt<V, W> edge;
     
     struct label_t {
         std::vector<V> out_v; // out hubs
         std::vector<WL> out_d;   // dist to them
-        char pad1[16];
+        char pad1[16]; // 24+24+16=64
         std::vector<V> in_v;  // in hubs
         std::vector<WL> in_d;    // dist from them
         char pad2[16];
+        std::vector<V> out_nh; // out next hop
+        std::vector<V> in_nh;  // in next hop
+        char pad3[16];
     }; // __attribute__((aligned(64)));
 
     static inline void * memalign (size_t bytes) {
@@ -249,7 +262,8 @@ public:
                 for (int i = 0; i < lab_u.out_v.size(); ++i) {
                     if (lab_u.out_v[i] == n_) break; // sentinel
                     V x = ranked_hubs[lab_u.out_v[i]];
-                    edg.push_back(edgeL(u, x, lab_u.out_d[i]));
+                    hubinfo hi(lab_u.out_d[i], lab_u.out_nh[i]);
+                    edg.push_back(edgeL(u, x, hi));
                 }
             }
         }
@@ -273,7 +287,8 @@ public:
                 for (int i = 0; i < lab_u.in_v.size(); ++i) {
                     if (lab_u.in_v[i] == n_) break; // sentinel
                     V x = ranked_hubs[lab_u.in_v[i]];
-                    edg.push_back(edgeL(x, u, lab_u.in_d[i]));
+                    hubinfo hi(lab_u.in_d[i], lab_u.in_nh[i]);
+                    edg.push_back(edgeL(x, u, hi));
                 }
             }
         }
@@ -313,7 +328,7 @@ public:
     pruned_landmark_labeling(const G &g, int  dummy,
                              const std::vector<V> &rank_order,
                              bool wgted = true) {
-        construct_index2(g, rank_order, wgted);
+        construct_index(g, rank_order, wgted);
     }
 
     // restrict labels to cover only pair from [sel_from] to [sel_to].
@@ -414,124 +429,7 @@ public:
             std::swap(lab_u.in_v, in_v);
             std::swap(lab_u.in_d, in_d);
         }
-    }
-
-    
-
-    void construct_index(const G &g, std::vector<V> rank_order) {
-
-        // Number of vertices
-        n_ = g.n();
-
-        // Allocate index
-        index_ = std::vector<label_t>(n_);
-        for (int u = 0; u < n_; ++u) {
-            label_t &lab_u = index_[u];
-            lab_u.in_v.push_back(n_);
-            lab_u.in_d.push_back(max_weight);
-            lab_u.out_v.push_back(n_);
-            lab_u.out_d.push_back(max_weight);
-        }
-
-        // Rank of a vertex and graph with ranks as ID
-        std::vector<int> rank_of(n_);
-        std::vector<edge> edges(g.m());
-        {
-            if (rank_order.size() != n_) { // default order
-                assert(rank_order.size() == 0);
-                rank_order = std::vector<int>(n_);
-                for (int i = 0; i < n_; ++i) rank_order[i] = i;
-            }
-            for (int i = 0; i < n_; ++i) {
-                rank_of[rank_order[i]] = i;
-            }
-            for (int u = 0, i = 0; u < n_; ++u)
-                for (auto e : g[u])
-                    edges[i++] = edge(rank_of[u], rank_of[e.dst], e.wgt);
-        }
-        G succ(g.n(), edges);
-        for (int e = 0; e < g.m(); ++e) std::swap(edges[e].src, edges[e].dst);
-        G prec(g.n(), edges);
-
-        // Pruned labeling : make two pruned Dijkstras (forward and backward)
-        // from each root r (by rank order), and add r as hub to labels
-        // of visited nodes.
-        {
-            traversal<G, WL, max_weight, zero_weight> trav(n_);
-            
-            sum_nvis = 0; last_nvis = 0; last_r = -1;
-            
-            // Visit by rank order:
-            for (int r = 0; r < n_; ++r) {
-                int ro = rank_order[r];
-
-                // forward dijkstra:
-                {
-                    trav.dijkstra(succ, r,
-                               [this,&rank_order,ro](V v, WL dv, V prt, WL dprt)
-                               -> bool {
-                                   return dv < distance(ro, rank_order[v]);
-                               });
-
-                    int nvis = trav.nvis();
-                    for (int i = 0; i < nvis; ++i) {
-                        int u = trav.visit(i);
-                        int uo = rank_order[u];
-                        label_t &lab_u = index_[uo];
-                        lab_u.in_v.back() = r;
-                        lab_u.in_d.back() = trav.dist(u);
-                        lab_u.in_v.push_back(n_);
-                        lab_u.in_d.push_back(max_weight);
-                    }
-                    sum_nvis += nvis; last_nvis += nvis;
-                    trav.clear();
-                }
-                    
-                // backward dijkstra:
-                {
-                    trav.dijkstra(prec, r,
-                               [this,&rank_order,ro](V v, WL dv, V prt, WL dprt)
-                               -> bool {
-                                   return dv < distance(rank_order[v], ro);
-                               });
-                    
-                    int nvis = trav.nvis();
-                    for (int i = 0; i < nvis; ++i) {
-                        int u = trav.visit(i);
-                        int uo = rank_order[u];
-                        label_t &lab_u = index_[uo];
-                        lab_u.out_v.back() = r;
-                        lab_u.out_d.back() = trav.dist(u);
-                        lab_u.out_v.push_back(n_);
-                        lab_u.out_d.push_back(max_weight);
-                    }
-                    sum_nvis += nvis; last_nvis += nvis;
-                    trav.clear();
-                }
-
-                assert(ranked_hubs.size() == r);
-                ranked_hubs.push_back(r);
-                assert(false); // OLD code, remove this function
-
-                
-                // progress:
-                if (r <= 10 || (r <= 100 && r % 10 == 0) || r % 100 == 0) {
-                    std::cerr << r  << " avg_nvis="<< (sum_nvis / (2*(r+1)))
-                              <<" lst_nvis="<< (last_nvis / 2 / (r - last_r))
-                              << " " << " ro=" << ro << " n=" << n_ <<" "
-                              << "avg_hs=" << (sum_nvis / (2*n_))
-                              <<"         \r";
-                    std::cerr.flush();
-                    last_r = r;
-                    last_nvis = 0;
-                }
-
-            }
-
-            std::cerr << "\n"; std::cerr.flush();
-            
-        } // Pruned labeling
-    }
+    }    
 
 
     void init_index(int n) {
@@ -545,8 +443,10 @@ public:
         for (int u = 0; u < n_; ++u) {
             label_t &lab_u = index_[u];
             lab_u.in_v.push_back(n_);
+            lab_u.in_nh.push_back(n_);
             lab_u.in_d.push_back(max_weight);
             lab_u.out_v.push_back(n_);
+            lab_u.out_nh.push_back(n_);
             lab_u.out_d.push_back(max_weight);
         }
     }
@@ -567,8 +467,10 @@ public:
                 int v = trav.visit(i);
                 label_t &lab_v = index_[v];
                 lab_v.in_v.back() = i_hub;
+                lab_v.in_nh.back() = trav.parent(v);
                 lab_v.in_d.back() = trav.dist(v);
                 lab_v.in_v.push_back(n_);
+                lab_v.in_nh.push_back(n_);
                 lab_v.in_d.push_back(max_weight);
             }
         }
@@ -588,8 +490,10 @@ public:
                 int v = trav.visit(i);
                 label_t &lab_v = index_[v];
                 lab_v.out_v.back() = i_hub;
+                lab_v.out_nh.back() = trav.parent(v);
                 lab_v.out_d.back() = trav.dist(v);
                 lab_v.out_v.push_back(n_);
+                lab_v.out_nh.push_back(n_);
                 lab_v.out_d.push_back(max_weight);
             }
         }
@@ -612,7 +516,7 @@ public:
 
     void incr_i_hub() { ++i_hub; }
     
-    void construct_index2(const G &g, std::vector<V> rank_order, bool wgted) {
+    void construct_index(const G &g, std::vector<V> rank_order, bool wgted) {
         init_index(g.n());
         assert(n_ == rank_order.size());
         G g_rev = g.reverse();

@@ -381,9 +381,9 @@ cpuinfo: hostinfo
 
 %.rioc: _scp
 	$(eval ALL:=nodes=1/cpu=2/core=12,walltime=96:00:00)
-	$(eval CPU:=$(if $(RESA),$(ALL),nodes=1/cpu=1/core=$(if $(CORE),$(CORE),1),walltime=24:00:00))
+	$(eval CPU:=$(if $(RESA),$(ALL),nodes=1/cpu=1/core=$(if $(CORE),$(CORE),1),walltime=72:00:00))
 	echo $(CPU)
-	ssh $(CLUST) 'cd $(CLUST_DIR); oarsub -p mem\>=160 -l $(CPU) "make $*"; sleep 5; echo; echo " --- stdout:"; cat  `ls OAR.*.stdout | tail -n 1`; sleep 10; echo; echo " ---stderr:"; cat  `ls OAR.*.stderr | tail -n 1`; echo'
+	ssh $(CLUST) 'cd $(CLUST_DIR); oarsub -l $(CPU) "make $*"; sleep 5; echo; echo " --- stdout:"; cat  `ls OAR.*.stdout | tail -n 1`; sleep 10; echo; echo " ---stderr:"; cat  `ls OAR.*.stderr | tail -n 1`; echo'
 
 stat:
 	ssh $(CLUST) oarstat
@@ -401,6 +401,22 @@ _scp: myMakefile Makefile $(HDRS) $(CTRS)
 %.get:
 	scp $(CLUST):$(CLUST_DIR)/$* $*
 
+
+# ----------- software heritage --------------
+
+software_heritage/dir_to_dir.csv.gz:
+	mkdir -p `dirname $@`
+	curl -o $@ https://annex.softwareheritage.org/public/dataset/swh-graph-2019-01-28/edges/dir_to_dir.csv.gz
+
+software_heritage/%:
+	mkdir -p `dirname $@`
+	curl -o $@ https://annex.softwareheritage.org/public/dataset/swh-graph-2019-01-28/edges/`basename $@`
+
+swh:
+	for bn in dir_to_dir.csv.gz dir_to_file.gz dir_to_rev.csv.gz origin_to_snapshot.csv.gz release_to_obj.csv.gz rev_to_dir.csv.gz rev_to_rev.csv.gz snapshot_to_obj.csv.gz ; do \
+		echo $$bn ;\
+		make software_heritage/$$bn ;\
+	done
 
 # ------------------ test some macros -----------------------
 

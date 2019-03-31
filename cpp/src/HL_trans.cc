@@ -10,7 +10,8 @@
 #include "logging.hh"
 
 typedef mgraph<int, int64_t> graph;
-
+typedef pruned_landmark_labeling<graph> pl_lab;
+typedef mgraph<int, pl_lab::hubinfo> graphL;
 
 void usage_exit (char **argv) {
     auto paragraph = [](std::string s, int width=80) -> std::string {
@@ -39,6 +40,9 @@ void usage_exit (char **argv) {
         "following one arc of the 'out-hubs' list and one arc of the "
         "'in-hubs' list provides the subgrap G* induced by selected nodes "
         "in the transitive closure of G." )
+              << paragraph (
+        "With command 'hubs-next-hop', it outputs in addition the next "
+        "hop to reach each hub." )
               <<
         "Command 'closure' computes G* and outputs its arcs.\n"
         "A '-' for [graph] or [subset] stands for standard input.\n"
@@ -46,7 +50,8 @@ void usage_exit (char **argv) {
         " Subset format: one node [id] per line.\n"
         " Command format: 'hubs' or 'closure'\n"
               <<paragraph (
-         " Output format: arcs [type] [node id] [hub/node id] [length] "
+         " Output format: arcs "
+         "[type] [node/hub id] [OPT next/hop id] [hub/node id] [length] "
          "where [type] is either 'i' or 'o' or 'c' for in-hub to node arc, "
          "or node to out-hub arc, or transitive closure arc respectively." );
         exit(1);
@@ -58,7 +63,8 @@ int main (int argc, char **argv) {
 
     // ------------------------ usage -------------------------
     std::string cmd(argc >= 2 ? argv[1] : "");
-    if (argc < 3 || (cmd != "hubs" && cmd != "closure")) {
+    if (argc < 3
+        || (cmd != "hubs" && cmd != "hubs-next-hop" && cmd != "closure")) {
         usage_exit(argv);
     }
 
@@ -119,16 +125,15 @@ int main (int argc, char **argv) {
     t = main_log.lap();
     
     // ------------------------- hub labeling -----------------------
-    pruned_landmark_labeling<graph> hl(g);
+    pl_lab hl(g);
     hl.print_stats(std::cerr, is_sel, is_sel);
     main_log.cerr(t) << "hub lab\n";
     t = main_log.lap();
 
     // ---------------- check --------
     traversal<graph> trav(g.n());
-    std::vector<int> src = {6116};
+    std::vector<int> src = {};
     for (int i = 0; i < 100; ++i) src.push_back(rand() % g.n());
-    std::cerr<< hl.distance(6116, 7189) <<" "<< hl.distance(6116, 7352) <<"\n";
     for (int s : src) {
         trav.clear();
         trav.dijkstra(g, s);
@@ -140,20 +145,35 @@ int main (int argc, char **argv) {
     
     // ----------------------------- output ------------------------
     if (cmd == "hubs") {
-        std::vector<graph::edge> edg; 
+        std::vector<pl_lab::edgeL> edg; 
         edg = hl.in_hub_edges(is_sel, is_sel);
-        for (const graph::edge &e : edg) {
-            std::cout <<"i "<< lab[e.src]<<" "<< lab[e.dst]<<" "<< e.wgt <<"\n";
+        for (const pl_lab::edgeL &e : edg) {
+            std::cout <<"i "<< lab[e.src]
+                      <<" "<< lab[e.dst] <<" "<< e.wgt.dist <<"\n";
         }
         edg = hl.out_hub_edges(is_sel, is_sel);
-        for (const graph::edge &e : edg) {
-            std::cout <<"o "<< lab[e.src]<<" "<< lab[e.dst]<<" "<< e.wgt <<"\n";
+        for (const pl_lab::edgeL &e : edg) {
+            std::cout <<"o "<< lab[e.src]
+                      <<" "<< lab[e.dst] <<" "<< e.wgt.dist <<"\n";
+        }
+    } else if (cmd == "hubs-next-hop") {
+        assert(sel.size() == n); // Makes sense if next hops are also selected.
+        std::vector<pl_lab::edgeL> edg; 
+        edg = hl.in_hub_edges(is_sel, is_sel);
+        for (const pl_lab::edgeL &e : edg) {
+            std::cout <<"i "<< lab[e.src] <<" "<< e.wgt.next_hop
+                      <<" "<< lab[e.dst] <<" "<< e.wgt.dist <<"\n";
+        }
+        edg = hl.out_hub_edges(is_sel, is_sel);
+        for (const pl_lab::edgeL &e : edg) {
+            std::cout <<"o "<< lab[e.src] <<" "<< e.wgt.next_hop
+                      <<" "<< lab[e.dst] <<" "<< e.wgt.dist <<"\n";
         }
     } else if (cmd == "closure") {
         // hub graphs
-        std::vector<graph::edge> edg_out = hl.out_hub_edges(is_sel, is_sel);
-        std::vector<graph::edge> edg_in = hl.in_hub_edges(is_sel, is_sel);
-        graph g_out(edg_out), g_in(edg_in);
+        std::vector<pl_lab::edgeL> edg_out = hl.out_hub_edges(is_sel, is_sel);
+        std::vector<pl_lab::edgeL> edg_in = hl.in_hub_edges(is_sel, is_sel);
+        graphL g_out(edg_out), g_in(edg_in);
         main_log.cerr() << "hub graphs\n";
         // selection
         std::vector<int> sel(n_sel), sel_inv(n);
@@ -174,11 +194,11 @@ int main (int argc, char **argv) {
             if (is_sel[u]) {
                 int i = sel_inv[u];
                 for (auto e : g_out[u]) {
-                    if (e.wgt < INT64_MAX) {
+                    if (e.wgt.dist < INT64_MAX) {
                         for (auto f : g_in[e.dst]) {
-                            if (f.wgt < INT64_MAX) {
+                            if (f.wgt.dist < INT64_MAX) {
                                 int j = sel_inv[f.dst];
-                                int64_t d_ij = e.wgt + f.wgt;
+                                int64_t d_ij = e.wgt.dist + f.wgt.dist;
                                 edg.push_back(graph::edge(i, j, d_ij));
                             }
                         }
@@ -213,11 +233,11 @@ int main (int argc, char **argv) {
                 if (is_sel[u]) {
                     int i = sel_inv[u];
                     for (auto e : g_out[u]) {
-                        if (e.wgt < INT64_MAX) {
+                        if (e.wgt.dist < INT64_MAX) {
                             for (auto f : g_in[e.dst]) {
-                                if (f.wgt < INT64_MAX) {
+                                if (f.wgt.dist < INT64_MAX) {
                                     int j = sel_inv[f.dst];
-                                    int64_t d_ij = e.wgt + f.wgt;
+                                    int64_t d_ij = e.wgt.dist + f.wgt.dist;
                                     if (d_ij < mat[i][j]) mat[i][j] = d_ij; 
                                 }
                             }
