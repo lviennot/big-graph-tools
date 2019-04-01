@@ -63,8 +63,8 @@ int main (int argc, char **argv) {
 
     // ------------------------ usage -------------------------
     std::string cmd(argc >= 2 ? argv[1] : "");
-    if (argc < 3
-        || (cmd != "hubs" && cmd != "hubs-next-hop" && cmd != "closure")) {
+    if (argc < 3 || (cmd != "hubs" && cmd != "hubs-next-hop"
+                     && cmd != "test" && cmd != "closure")) {
         usage_exit(argv);
     }
 
@@ -94,6 +94,7 @@ int main (int argc, char **argv) {
         // graph
         g.set_edges(edg);
     }
+    g = g.simple();
     assert(n == g.n());
     size_t m = g.m();
     main_log.cerr(t)
@@ -130,44 +131,70 @@ int main (int argc, char **argv) {
     main_log.cerr(t) << "hub lab\n";
     t = main_log.lap();
 
-    // ---------------- check --------
-    traversal<graph> trav(g.n());
-    std::vector<int> src = {};
-    for (int i = 0; i < 100; ++i) src.push_back(rand() % g.n());
-    for (int s : src) {
-        trav.clear();
-        trav.dijkstra(g, s);
-        for (int u : g) {
-            assert(trav.dist(u) == hl.distance(s, u));
-        }
-    }
-    
-    
     // ----------------------------- output ------------------------
-    if (cmd == "hubs") {
+    if (cmd == "test") {
+        // hub graphs
+        std::vector<pl_lab::edgeL> edg_out = hl.out_hub_edges(is_sel, is_sel);
+        std::vector<pl_lab::edgeL> edg_in = hl.in_hub_edges(is_sel, is_sel);
+        graphL g_out(edg_out), g_in(edg_in);
+        g_in = g_in.reverse();
+        assert(g_out.is_ID_sorted());
+        assert(g_in.is_ID_sorted());
+        g = g.reverse().reverse(); // sort neighbors by ID
+        traversal<graph> trav(g.n());
+        std::vector<int> src = {};
+        for (int i = 0; i < 100; ++i) src.push_back(rand() % g.n());
+        for (int s : src) {
+            trav.clear();
+            trav.dijkstra(g, s);
+            for (int u : g) {
+                assert(trav.dist(u) == hl.distance(s, u));
+                if (trav.dist(u) == INT64_MAX) continue;
+                std::pair<int, int> hub = hl.common_hub(s, u);
+                graphL::edge_head sx = g_out.neighbor(s, hub.first);
+                graphL::edge_head xu = g_in.neighbor(u, hub.second);
+                assert(sx.dst == xu.dst); // hub x
+                int x = hl.hub_ID(sx.dst);
+                assert(trav.dist(u) == sx.wgt.dist + xu.wgt.dist);
+                int64_t len = 0L;
+                for (int s2 = s; s2 != x; ) {
+                    pl_lab::hubinfo hi = g_out.edge_weight(s2, sx.dst);
+                    len += g.edge_weight(s2, hi.next_hop);
+                    s2 = hi.next_hop;
+                }
+                assert(len == sx.wgt.dist);
+                for (int u2 = u; u2 != x; ) {
+                    pl_lab::hubinfo hi = g_in.edge_weight(u2, xu.dst);
+                    len += g.edge_weight(hi.next_hop, u2);
+                    u2 = hi.next_hop;
+                }
+                assert(len == trav.dist(u));
+            }
+        }
+    } else if (cmd == "hubs") {
         std::vector<pl_lab::edgeL> edg; 
         edg = hl.in_hub_edges(is_sel, is_sel);
         for (const pl_lab::edgeL &e : edg) {
-            std::cout <<"i "<< lab[e.src]
+            std::cout <<"i "<< lab[e.wgt.hub]
                       <<" "<< lab[e.dst] <<" "<< e.wgt.dist <<"\n";
         }
         edg = hl.out_hub_edges(is_sel, is_sel);
         for (const pl_lab::edgeL &e : edg) {
             std::cout <<"o "<< lab[e.src]
-                      <<" "<< lab[e.dst] <<" "<< e.wgt.dist <<"\n";
+                      <<" "<< lab[e.wgt.hub] <<" "<< e.wgt.dist <<"\n";
         }
     } else if (cmd == "hubs-next-hop") {
         assert(sel.size() == n); // Makes sense if next hops are also selected.
         std::vector<pl_lab::edgeL> edg; 
         edg = hl.in_hub_edges(is_sel, is_sel);
         for (const pl_lab::edgeL &e : edg) {
-            std::cout <<"i "<< lab[e.src] <<" "<< e.wgt.next_hop
+            std::cout <<"i "<< lab[e.wgt.hub] <<" "<< lab[e.wgt.next_hop]
                       <<" "<< lab[e.dst] <<" "<< e.wgt.dist <<"\n";
         }
         edg = hl.out_hub_edges(is_sel, is_sel);
         for (const pl_lab::edgeL &e : edg) {
-            std::cout <<"o "<< lab[e.src] <<" "<< e.wgt.next_hop
-                      <<" "<< lab[e.dst] <<" "<< e.wgt.dist <<"\n";
+            std::cout <<"o "<< lab[e.src] <<" "<< lab[e.wgt.next_hop]
+                      <<" "<< lab[e.wgt.hub] <<" "<< e.wgt.dist <<"\n";
         }
     } else if (cmd == "closure") {
         // hub graphs

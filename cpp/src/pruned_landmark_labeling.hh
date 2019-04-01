@@ -19,10 +19,12 @@ public:
     typedef typename G::vertex V;
 
     struct hubinfo {
+        V hub; // original ID
         WL dist;
         V next_hop;
-        hubinfo(WL d, V nh) : dist(d), next_hop(nh) {}
-        hubinfo() : dist(INT64_MAX), next_hop(-1) {}
+        //int next_hub_index;
+        hubinfo(V x, WL d, V nh) : hub(x), dist(d), next_hop(nh) {}
+        hubinfo() : hub(-1), dist(INT64_MAX), next_hop(-1) {}
     };
 
     typedef typename edge::src_dst_wgt<V, hubinfo> edgeL;
@@ -191,6 +193,8 @@ public:
         print_stats(std::cerr, is_sel_from, is_sel_to);
     }
 
+    V hub_ID(int i) { return ranked_hubs[i]; }
+
     inline WL distance(int u, int v) {
         const label_t &lab_u = index_[u];
         const label_t &lab_v = index_[v];
@@ -262,8 +266,8 @@ public:
                 for (int i = 0; i < lab_u.out_v.size(); ++i) {
                     if (lab_u.out_v[i] == n_) break; // sentinel
                     V x = ranked_hubs[lab_u.out_v[i]];
-                    hubinfo hi(lab_u.out_d[i], lab_u.out_nh[i]);
-                    edg.push_back(edgeL(u, x, hi));
+                    hubinfo hi(x, lab_u.out_d[i], lab_u.out_nh[i]);
+                    edg.push_back(edgeL(u, lab_u.out_v[i], hi));
                 }
             }
         }
@@ -287,8 +291,8 @@ public:
                 for (int i = 0; i < lab_u.in_v.size(); ++i) {
                     if (lab_u.in_v[i] == n_) break; // sentinel
                     V x = ranked_hubs[lab_u.in_v[i]];
-                    hubinfo hi(lab_u.in_d[i], lab_u.in_nh[i]);
-                    edg.push_back(edgeL(x, u, hi));
+                    hubinfo hi(x, lab_u.in_d[i], lab_u.in_nh[i]);
+                    edg.push_back(edgeL(lab_u.in_v[i], u, hi));
                 }
             }
         }

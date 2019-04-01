@@ -91,6 +91,12 @@ public:
         return d;
     }
     
+    edge_head neighbor(V u, size_t i) {
+        size_t e = sdeg[u] + i;
+        assert(e < sdeg[u+1]);
+        return adj[e];
+    }
+    
     size_t degree_sum(V u) const { return sdeg[u]; }
     
     // asserts sorted adjacency lists (use g.reverse() or g.reverse().reverse())
@@ -120,7 +126,7 @@ public:
         }
         throw std::invalid_argument("mgraph.edge_weight(): edge not found");
     }
-    
+
     mgraph reverse() const {
         std::vector<edge> edg;
         edg.reserve(m());
@@ -197,6 +203,16 @@ public:
                           return e.wgt < f.wgt;
                       });
         }
+    }
+
+    bool is_ID_sorted() { // asymptotically slower than reverse() twice
+        for (V u = 0; u < n_; ++u) {
+            size_t e = sdeg[u], f = sdeg[u+1];
+            for (size_t e = sdeg[u] + 1; e < sdeg[u+1]; ++e) {
+                if (adj[e-1].dst > adj[e].dst) return false;
+            }
+        }
+        return true;
     }
 
     std::pair<mgraph<V, W, nb_not_vertex>, std::vector<V> >
