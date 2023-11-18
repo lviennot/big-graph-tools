@@ -10,7 +10,7 @@ Tools for manipulating large graphs:
 
 
 
-This project has been split into smaller modules:
+This project has been split into smaller parts:
 
  * [int-graph-ml](https://github.com/lviennot/int-graph-ml) (Ocaml): the core of the ocaml part providing a graph representation with compact memory usage compared to ocamlgraph.
  * [weighted-diameter](https://github.com/lviennot/weighted-diameter) (C++): effcient computation of diameter, radius and all eccentricities of a graph (supports both directed/undirected and weighted/unweighted).
