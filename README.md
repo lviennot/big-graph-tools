@@ -3,7 +3,7 @@
 (Author : Laurent Viennot, Inria 2015)
 
 Tools for manipulating large graphs:
- * a minimalist library in c++,
+ * a minimalist library in C++,
  * and a [libray in ocaml](ocaml/README.md).
 
 [Home page](https://who.rocq.inria.fr/Laurent.Viennot/dev/big-graph-tools/)
