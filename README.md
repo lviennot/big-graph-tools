@@ -12,7 +12,7 @@ Tools for manipulating large graphs:
 
 This project has been split into smaller modules:
 
- * [int-graph-ml](https://github.com/lviennot/int-graph-ml) (Ocaml): the core of the ocaml part providing a graph representation with compact memory usage compared to ocamlgraph).
+ * [int-graph-ml](https://github.com/lviennot/int-graph-ml) (Ocaml): the core of the ocaml part providing a graph representation with compact memory usage compared to ocamlgraph.
  * [weighted-diameter](https://github.com/lviennot/weighted-diameter) (C++): effcient computation of diameter, radius and all eccentricities of a graph (supports both directed/undirected and weighted/unweighted).
  * [hub-labeling](https://github.com/lviennot/hub-labeling) (C++): compact representation of the distance matrix through a hub labeling (aka 2-hop labeling) of a weighted directed graph. 
  * [contraction-hierarchies](https://github.com/lviennot/contraction-hierarchies) (C++): contracting a graph to a distance preserver allowing efficient shortest path computations.
